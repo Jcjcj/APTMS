@@ -8,18 +8,12 @@ public class ApartmentsSystem1 {
 
     public static void main(String[] args) {
 
-        // =============================================
-        // RESET DATABASE
-        // =============================================
         clearAllTables();
 
-        // =============================================
-        // CREATE TABLES
-        // =============================================
         DBConnection.connect();
         DatabaseSetup.createTables();
 
-        System.out.println("\n========== INSERT DATA ==========\n");
+        System.out.println("\n========== INSERTING DATA ==========\n");
 
         // =============================================
         // OWNERS
@@ -44,15 +38,14 @@ public class ApartmentsSystem1 {
                 "rental456"
         );
 
-        int ownerId1 = getOwnerIdByUsername("carlos_m");
-        int ownerId2 = getOwnerIdByUsername("luz_r");
+        int ownerId1 = getId("SELECT owner_id FROM owners WHERE username=?", "carlos_m");
+        int ownerId2 = getId("SELECT owner_id FROM owners WHERE username=?", "luz_r");
 
         // =============================================
-        // APARTMENTS (FIXED METHOD CALLS)
+        // APARTMENTS (FIXED CALLS)
         // =============================================
         ApartmentDAO aptDAO = new ApartmentDAO();
 
-        // Apartment 1
         aptDAO.addApartment(
                 null,
                 "Sunrise Residences",
@@ -77,7 +70,6 @@ public class ApartmentsSystem1 {
                 ownerId1
         );
 
-        // Apartment 2
         aptDAO.addApartment(
                 null,
                 "Greenfield Towers",
@@ -102,49 +94,33 @@ public class ApartmentsSystem1 {
                 ownerId1
         );
 
-        int aptId1 = getApartmentIdByName("Sunrise Residences");
-        int aptId2 = getApartmentIdByName("Greenfield Towers");
+        int aptId1 = getId("SELECT apartment_id FROM apartments WHERE apartment_name=?", "Sunrise Residences");
+        int aptId2 = getId("SELECT apartment_id FROM apartments WHERE apartment_name=?", "Greenfield Towers");
 
         // =============================================
         // TENANTS
         // =============================================
         TenantDAO tenantDAO = new TenantDAO();
 
-        tenantDAO.registerTenant(
-                "Maria Santos",
-                "09162345678",
-                "maria@email.com",
-                "Lahug",
-                "09171234570",
-                "maria_s",
-                "pass456",
-                "id1.jpg"
-        );
+        tenantDAO.registerTenant("Maria Santos", "09162345678", "maria@email.com",
+                "Lahug", "09171234570", "maria_s", "pass456", "id1.jpg");
 
-        tenantDAO.registerTenant(
-                "Jose Rizal",
-                "09162345679",
-                "jose@email.com",
-                "Banilad",
-                "09171234571",
-                "jose_r",
-                "pass789",
-                "id2.jpg"
-        );
+        tenantDAO.registerTenant("Jose Rizal", "09162345679", "jose@email.com",
+                "Banilad", "09171234571", "jose_r", "pass789", "id2.jpg");
 
-        int tenantId1 = getTenantIdByUsername("maria_s");
-        int tenantId2 = getTenantIdByUsername("jose_r");
+        int t1 = getId("SELECT tenant_id FROM tenants_base WHERE username=?", "maria_s");
+        int t2 = getId("SELECT tenant_id FROM tenants_base WHERE username=?", "jose_r");
 
         // =============================================
-        // ROOM ASSIGNMENT
+        // ROOM OCCUPANCY
         // =============================================
-        RoomOccupancyDAO occDAO = new RoomOccupancyDAO();
+        RoomOccupancyDAO occ = new RoomOccupancyDAO();
 
-        occDAO.assignTenantToRoom(aptId1, "101", tenantId1);
-        occDAO.assignTenantToRoom(aptId2, "201", tenantId2);
+        occ.assignTenantToRoom(aptId1, "101", t1);
+        occ.assignTenantToRoom(aptId2, "201", t2);
 
         // =============================================
-        // VIEW TEST
+        // VIEWING
         // =============================================
         ViewingDAO viewDAO = new ViewingDAO();
 
@@ -152,7 +128,7 @@ public class ApartmentsSystem1 {
                 aptId1,
                 "Visitor A",
                 "09170000000",
-                LocalDate.now().plusDays(5).toString(),
+                LocalDate.now().plusDays(3).toString(),
                 "09:00",
                 "10:00"
         );
@@ -160,62 +136,28 @@ public class ApartmentsSystem1 {
         // =============================================
         // DISPLAY
         // =============================================
-        System.out.println("\n========== RESULTS ==========\n");
+        System.out.println("\n========== APARTMENTS ==========\n");
 
-        printTable("apartments",
+        print("apartments",
                 "apartment_name",
                 "barangay",
                 "floors",
                 "rooms_per_floor",
-                "total_rooms",
                 "rooms_available"
         );
 
-        printTable("tenants",
-                "name",
-                "contact_number",
-                "apartment_name",
-                "apartment_code",
-                "room_number",
-                "email",
-                "address",
-                "move_in_date"
-        );
+        System.out.println("\n========== BARANGAYS ==========\n");
+        aptDAO.getAllBarangays().forEach(System.out::println);
 
-        printTable("room_occupancy",
-                "apartment_id",
-                "room_number",
-                "tenant_id",
-                "status"
-        );
-
-        printTable("tenant_history",
-                "tenant_id",
-                "name",
-                "room_number",
-                "move_out_date"
-        );
-
-        // =============================================
-        // BARANGAY TEST
-        // =============================================
-        ApartmentDAO search = new ApartmentDAO();
-
-        System.out.println("\nSearch Lahug:");
-        search.searchApartmentsWithAvailableRooms("Lahug")
+        System.out.println("\n========== SEARCH TEST ==========\n");
+        aptDAO.searchApartmentsWithAvailableRooms("Lahug")
                 .forEach(System.out::println);
-
-        System.out.println("\nSuggestion test (Adlaon):");
-        System.out.println(search.searchWithSuggestion("Adlaon"));
-
-        System.out.println("\nALL BARANGAYS:");
-        search.getAllBarangays().forEach(System.out::println);
 
         System.out.println("\nDONE.");
     }
 
     // =============================================
-    // CLEAR DATABASE
+    // CLEAR TABLES
     // =============================================
     private static void clearAllTables() {
 
@@ -234,10 +176,7 @@ public class ApartmentsSystem1 {
 
             for (String t : tables) {
                 stmt.executeUpdate("DELETE FROM " + t);
-                stmt.executeUpdate("DELETE FROM sqlite_sequence WHERE name='" + t + "'");
             }
-
-            stmt.execute("DROP VIEW IF EXISTS tenants");
 
         } catch (Exception e) {
             System.out.println("Clear Error: " + e.getMessage());
@@ -247,23 +186,11 @@ public class ApartmentsSystem1 {
     // =============================================
     // HELPERS
     // =============================================
-    private static int getOwnerIdByUsername(String u) {
-        return getId("SELECT owner_id FROM owners WHERE username=?", u);
-    }
-
-    private static int getApartmentIdByName(String n) {
-        return getId("SELECT apartment_id FROM apartments WHERE apartment_name=?", n);
-    }
-
-    private static int getTenantIdByUsername(String u) {
-        return getId("SELECT tenant_id FROM tenants_base WHERE username=?", u);
-    }
-
-    private static int getId(String sql, String value) {
+    private static int getId(String sql, String val) {
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
-            ps.setString(1, value);
+            ps.setString(1, val);
             ResultSet rs = ps.executeQuery();
 
             if (rs.next()) return rs.getInt(1);
@@ -274,22 +201,21 @@ public class ApartmentsSystem1 {
         return -1;
     }
 
-    private static void printTable(String table, String... cols) {
-
-        System.out.println("\n--- " + table.toUpperCase() + " ---");
+    private static void print(String table, String... cols) {
 
         try (Connection conn = DBConnection.connect();
              Statement stmt = conn.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT * FROM " + table)) {
 
             while (rs.next()) {
+
                 StringBuilder sb = new StringBuilder();
 
                 for (String c : cols) {
                     sb.append(c)
-                      .append("=")
-                      .append(rs.getString(c))
-                      .append(" | ");
+                            .append("=")
+                            .append(rs.getString(c))
+                            .append(" | ");
                 }
 
                 System.out.println(sb);
