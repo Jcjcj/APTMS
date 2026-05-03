@@ -12,8 +12,9 @@ public class RoomDAO {
 
     public List<String> getRoomsByApartment(int apartmentId) {
         List<String> rooms = new ArrayList<>();
-        // MODIFIED: Select rent_amount
-        String sql = "SELECT room_number, status, rent_amount, description, image_url FROM rooms WHERE apartment_id = ? ORDER BY room_number ASC";
+        
+        String sql = "SELECT room_number, status, rent_amount, capacity_text, utilities_text, design_text, image_url " +
+                     "FROM rooms WHERE apartment_id = ? ORDER BY room_number ASC";
 
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -22,10 +23,15 @@ public class RoomDAO {
             ResultSet rs = ps.executeQuery();
 
             while (rs.next()) {
-                rooms.add("Room: " + rs.getString("room_number") + 
-                          " | Rent: " + rs.getDouble("rent_amount") + // NEW
-                          " | Status: " + rs.getString("status") + 
-                          " | Desc: " + rs.getString("description"));
+                String roomDetails = String.format("Room: %s | Status: %s | Rent: PHP %.2f | Capacity: %s | Utilities: %s | Design: %s",
+                        rs.getString("room_number"),
+                        rs.getString("status"),
+                        rs.getDouble("rent_amount"),
+                        rs.getString("capacity_text"),
+                        rs.getString("utilities_text"),
+                        rs.getString("design_text")
+                );
+                rooms.add(roomDetails);
             }
         } catch (Exception e) {
             LOGGER.severe("Get Rooms Error: " + e.getMessage());
@@ -33,16 +39,18 @@ public class RoomDAO {
         return rooms;
     }
 
-    public boolean updateRoomDetails(int apartmentId, String roomNumber, String newDescription, String newImageUrl) {
-        String sql = "UPDATE rooms SET description = ?, image_url = ? WHERE apartment_id = ? AND room_number = ?";
+    public boolean updateRoomDetails(int apartmentId, String roomNumber, String newCapacity, String newUtilities, String newDesign, String newImageUrl) {
+        String sql = "UPDATE rooms SET capacity_text = ?, utilities_text = ?, design_text = ?, image_url = ? WHERE apartment_id = ? AND room_number = ?";
         
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
-            ps.setString(1, newDescription);
-            ps.setString(2, newImageUrl);
-            ps.setInt(3, apartmentId);
-            ps.setString(4, roomNumber);
+            ps.setString(1, newCapacity);
+            ps.setString(2, newUtilities);
+            ps.setString(3, newDesign);
+            ps.setString(4, newImageUrl);
+            ps.setInt(5, apartmentId);
+            ps.setString(6, roomNumber);
 
             return ps.executeUpdate() > 0;
         } catch (Exception e) {

@@ -10,6 +10,13 @@ public class DatabaseSetup {
         try (Connection conn = DBConnection.connect();
              Statement stmt = conn.createStatement()) {
 
+            // SUPER ADMINS TABLE
+            stmt.execute("CREATE TABLE IF NOT EXISTS super_admins ("
+                    + "admin_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    + "username TEXT UNIQUE,"
+                    + "password TEXT)");
+            stmt.execute("INSERT OR IGNORE INTO super_admins (username, password) VALUES ('superadmin', '" + PasswordUtil.hashPassword("admin123") + "')");
+
             // OWNERS TABLE
             stmt.execute("CREATE TABLE IF NOT EXISTS owners ("
                     + "owner_id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -17,10 +24,13 @@ public class DatabaseSetup {
                     + "contact_number TEXT,"
                     + "email TEXT,"
                     + "address TEXT,"
+                    + "emergency_number TEXT,"
+                    + "valid_id TEXT,"
                     + "username TEXT UNIQUE,"
-                    + "password TEXT)");
+                    + "password TEXT,"
+                    + "is_active INTEGER DEFAULT 1)");
 
-            // APARTMENTS TABLE (MODIFIED: Removed rooms_per_floor and rent_per_room)
+            // APARTMENTS TABLE
             stmt.execute("CREATE TABLE IF NOT EXISTS apartments ("
                     + "apartment_id INTEGER PRIMARY KEY AUTOINCREMENT,"
                     + "apartment_code TEXT UNIQUE,"
@@ -30,7 +40,7 @@ public class DatabaseSetup {
                     + "floors INTEGER,"
                     + "total_rooms INTEGER,"
                     + "rooms_available INTEGER,"
-                    + "down_payment REAL,"
+                    + "capital REAL," 
                     + "payment_method TEXT,"
                     + "description TEXT,"
                     + "policy TEXT,"
@@ -44,20 +54,28 @@ public class DatabaseSetup {
                     + "social_media TEXT,"
                     + "emergency_number TEXT,"
                     + "profile_image TEXT,"
+                    + "is_active INTEGER DEFAULT 1,"
                     + "FOREIGN KEY(owner_id) REFERENCES owners(owner_id) ON DELETE CASCADE)");
 
-            // ROOMS TABLE (MODIFIED: Added rent_amount)
+            // ROOMS TABLE (With capacity_text, utilities_text, design_text)
             stmt.execute("CREATE TABLE IF NOT EXISTS rooms ("
                     + "room_id INTEGER PRIMARY KEY AUTOINCREMENT,"
                     + "apartment_id INTEGER,"
                     + "room_number TEXT,"
                     + "status TEXT DEFAULT 'Available',"
-                    + "rent_amount REAL DEFAULT 0.0," // Each room now has its own price
-                    + "description TEXT DEFAULT 'Standard Room description. Update via owner panel.',"
+                    + "rent_amount REAL DEFAULT 0.0," 
+                    + "down_payment REAL DEFAULT 0.0,"     
+                    + "security_deposit REAL DEFAULT 0.0," 
+                    + "capacity_text TEXT DEFAULT 'Specify capacity here...',"   
+                    + "utilities_text TEXT DEFAULT 'Specify utilities here...'," 
+                    + "design_text TEXT DEFAULT 'Specify design here...',"       
+                    + "electricity_type TEXT DEFAULT 'Meter',"
+                    + "water_type TEXT DEFAULT 'Meter',"
+                    + "internet_type TEXT DEFAULT 'Plan',"
                     + "image_url TEXT DEFAULT 'default_room.png',"
                     + "FOREIGN KEY(apartment_id) REFERENCES apartments(apartment_id) ON DELETE CASCADE)");
 
-            // REGISTERED TENANTS TABLE
+            // REGISTERED TENANTS TABLE 
             stmt.execute("CREATE TABLE IF NOT EXISTS registered_tenants ("
                     + "tenant_id INTEGER PRIMARY KEY AUTOINCREMENT,"
                     + "name TEXT,"
@@ -69,9 +87,10 @@ public class DatabaseSetup {
                     + "password TEXT,"
                     + "valid_id TEXT,"
                     + "approval_status TEXT DEFAULT 'PENDING',"
-                    + "moved_out_date TEXT)");
+                    + "moved_out_date TEXT,"
+                    + "is_active INTEGER DEFAULT 1)");
 
-            // ROOM OCCUPANCY TABLE
+            // ROOM OCCUPANCY TABLE (Reverted back to normal, no occupants_count)
             stmt.execute("CREATE TABLE IF NOT EXISTS room_occupancy ("
                     + "occupancy_id INTEGER PRIMARY KEY AUTOINCREMENT,"
                     + "apartment_id INTEGER,"
@@ -92,7 +111,9 @@ public class DatabaseSetup {
                     + "schedule_date TEXT,"
                     + "start_time TEXT,"
                     + "end_time TEXT,"
-                    + "status TEXT DEFAULT 'SCHEDULED',"
+                    + "status TEXT DEFAULT 'PENDING'," 
+                    + "temp_username TEXT UNIQUE," 
+                    + "temp_password TEXT,"
                     + "FOREIGN KEY(apartment_id) REFERENCES apartments(apartment_id))");
                     
             // MAINTENANCE REQUESTS TABLE
@@ -117,8 +138,8 @@ public class DatabaseSetup {
                     + "nearby_2 TEXT,"
                     + "nearby_3 TEXT)");
 
-            // SEED DATA
-            String[] barangayQueries = {
+            // FULL BARANGAY SEEDING LIST
+            String[] bQueries = {
                 "INSERT OR IGNORE INTO barangays VALUES (NULL,'Adlaon','Pit-os','Binaliw','Agus')",
                 "INSERT OR IGNORE INTO barangays VALUES (NULL,'Agus','Lahug','Apas','Pit-os')",
                 "INSERT OR IGNORE INTO barangays VALUES (NULL,'Apas','Lahug','Agus','Camputhaw')",
@@ -167,11 +188,11 @@ public class DatabaseSetup {
                 "INSERT OR IGNORE INTO barangays VALUES (NULL,'Zapatera','Sambag 2','Cogon Ramos','Sambag 1')"
             };
 
-            for (String query : barangayQueries) {
-                stmt.execute(query);
+            for (String q : bQueries) {
+                stmt.execute(q);
             }
 
-            System.out.println("✓ Database tables created/updated successfully");
+            System.out.println("✓ Database structure updated (Text-based capacity only).");
 
         } catch (Exception e) {
             System.out.println("DB Setup Error: " + e.getMessage());
