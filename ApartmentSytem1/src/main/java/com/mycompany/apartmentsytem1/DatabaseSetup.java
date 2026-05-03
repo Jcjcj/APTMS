@@ -118,17 +118,15 @@ public class DatabaseSetup {
                     
             // MAINTENANCE REQUESTS TABLE
             stmt.execute("CREATE TABLE IF NOT EXISTS maintenance_requests ("
-                    + "request_id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                    + "apartment_id INTEGER,"
-                    + "room_number TEXT,"
-                    + "tenant_id INTEGER,"
-                    + "issue_description TEXT,"
-                    + "priority_level TEXT," 
-                    + "status TEXT DEFAULT 'OPEN'," 
-                    + "date_reported TEXT,"
-                    + "date_resolved TEXT,"
-                    + "FOREIGN KEY(apartment_id) REFERENCES apartments(apartment_id),"
-                    + "FOREIGN KEY(tenant_id) REFERENCES registered_tenants(tenant_id))");
+                    + "request_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    + "apartment_id INTEGER, room_number TEXT, tenant_id INTEGER, "
+                    + "issue_description TEXT, priority_level TEXT, "
+                    + "status TEXT DEFAULT 'PENDING', rejection_reason TEXT, "
+                    + "date_reported TEXT, date_resolved TEXT, date_updated TEXT, "
+                    + "FOREIGN KEY (apartment_id) REFERENCES apartments(apartment_id), "
+                    + "FOREIGN KEY (tenant_id) REFERENCES registered_tenants(tenant_id))");
+
+            
 
             // BARANGAYS TABLE
             stmt.execute("CREATE TABLE IF NOT EXISTS barangays ("
@@ -187,6 +185,34 @@ public class DatabaseSetup {
                 "INSERT OR IGNORE INTO barangays VALUES (NULL,'Tejero','Carreta','Luz','Sambag 1')",
                 "INSERT OR IGNORE INTO barangays VALUES (NULL,'Zapatera','Sambag 2','Cogon Ramos','Sambag 1')"
             };
+            
+            // BILLS HISTORY TABLE (NO DAO huwat pas bill ni lary)
+            stmt.execute("CREATE TABLE IF NOT EXISTS bills ("
+                    + "bill_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    + "room_id INTEGER, "
+                    + "tenant_id INTEGER, "
+                    + "rent_amount REAL, "
+                    + "electricity_bill REAL, "
+                    + "water_bill REAL, "
+                    + "wifi_bill REAL, "
+                    + "total_amount REAL, "
+                    + "billing_month TEXT, " // Format: 'YYYY-MM'
+                    + "status TEXT DEFAULT 'UNPAID', " // UNPAID, PAID, OVERDUE
+                    + "date_created TEXT, "
+                    + "date_paid TEXT, "
+                    + "FOREIGN KEY (room_id) REFERENCES rooms(room_id), "
+                    + "FOREIGN KEY (tenant_id) REFERENCES registered_tenants(tenant_id))");
+            
+            // TENANT HISTORY TABLE
+            stmt.execute("CREATE TABLE IF NOT EXISTS tenant_history ("
+                    + "history_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    + "room_id INTEGER, "
+                    + "tenant_id INTEGER, "
+                    + "move_in_date TEXT, "
+                    + "move_out_date TEXT, "
+                    + "termination_reason TEXT, "
+                    + "FOREIGN KEY (room_id) REFERENCES rooms(room_id), "
+                    + "FOREIGN KEY (tenant_id) REFERENCES registered_tenants(tenant_id))");
 
             for (String q : bQueries) {
                 stmt.execute(q);

@@ -1,4 +1,4 @@
-package com.mycompany.apartmentssystem1;
+package com.mycompany.apartmentsytem1;
 
 import java.sql.*;
 import java.time.LocalDate;
