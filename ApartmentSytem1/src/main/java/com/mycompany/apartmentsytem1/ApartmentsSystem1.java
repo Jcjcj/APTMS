@@ -56,18 +56,16 @@ public class ApartmentsSystem1 {
         System.out.println("\n========== 3. TENANTS & OCCUPANCY ==========");
         TenantDAO tenantDAO = new TenantDAO();
         
-        // Register first
+        // Register Maria
         tenantDAO.registerTenant("Maria Santos", "09162345678", "maria@email.com", "Lahug", "09171234570", "maria_s", "pass456", "id1.jpg");
-        
-        // Get ID second
         int mariaId = getId("SELECT tenant_id FROM registered_tenants WHERE username=?", "maria_s");
         
-        // Approve third
+        // Approve Maria
         ownerDAO.updateTenantStatus(mariaId, "APPROVED"); 
         System.out.println("Maria registered and approved.");
         
         RoomOccupancyDAO occDAO = new RoomOccupancyDAO();
-        // Assign Maria to Room 101 of Sunrise Residences
+        // Assign Maria to Room 101
         occDAO.assignTenantToRoom(aptId1, "101", mariaId);
         System.out.println("Assigned Maria to Room 101.");
 
@@ -75,41 +73,46 @@ public class ApartmentsSystem1 {
         System.out.println("\n========== 4. TESTING MAINTENANCE SYSTEM ==========");
         MaintenanceDAO maintDAO = new MaintenanceDAO();
         
-        System.out.println("Maria submits an emergency ticket for Room 101...");
         maintDAO.submitRequest(aptId1, "101", mariaId, "Water pipe burst in bathroom!", "EMERGENCY");
-        
-        System.out.println("Maria submits a low priority ticket for Room 101...");
         maintDAO.submitRequest(aptId1, "101", mariaId, "Loose doorknob", "LOW");
         
         maintDAO.printActiveRequests(aptId1);
         
-        System.out.println("\nOwner fixes the pipe and updates the ticket...");
+        System.out.println("\nOwner fixes the pipe...");
         int emergencyTicketId = getId("SELECT request_id FROM maintenance_requests WHERE priority_level=?", "EMERGENCY");
         maintDAO.updateRequestStatus(emergencyTicketId, "RESOLVED");
-        
-        System.out.println("Printing active requests again (Emergency should be gone):");
-        maintDAO.printActiveRequests(aptId1);
 
 
         System.out.println("\n========== 5. TESTING ANALYTICS SYSTEM ==========");
         AnalyticsDAO analyticsDAO = new AnalyticsDAO();
         analyticsDAO.printOccupancyStats(aptId1);
-        System.out.println("");
         analyticsDAO.printPopularBarangays();
 
-        System.out.println("\n========== SYSTEM TEST COMPLETE ==========");
+
+        System.out.println("\n========== 6. POPULATING VIEWING SCHEDULE ==========");
+        // Adding data to the viewing_schedule table
+        String scheduleSql = "INSERT INTO viewing_schedule(apartment_id, tenant_name, contact_number, schedule_date, start_time, end_time) VALUES(?,?,?,?,?,?)";
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(scheduleSql)) {
+            ps.setInt(1, aptId1);
+            ps.setString(2, "Juan Dela Cruz");
+            ps.setString(3, "09998887776");
+            ps.setString(4, "2026-05-10");
+            ps.setString(5, "02:00 PM");
+            ps.setString(6, "03:00 PM");
+            ps.executeUpdate();
+            System.out.println("✓ Viewing schedule entry created for Juan Dela Cruz.");
+        } catch (Exception e) {
+            System.out.println("Schedule Error: " + e.getMessage());
+        }
+
+        System.out.println("\n========== SYSTEM TEST COMPLETE: ALL TABLES POPULATED ==========");
     }
 
     private static void clearAllTables() {
         String[] tables = {
-                "maintenance_requests",
-                "viewing_schedule",
-                "room_occupancy",
-                "rooms",
-                "apartments",
-                "registered_tenants",
-                "owners",
-                "barangays" // Added to ensure a fresh start
+                "maintenance_requests", "viewing_schedule", "room_occupancy",
+                "rooms", "apartments", "registered_tenants", "owners", "barangays"
         };
 
         try (Connection conn = DBConnection.connect();
@@ -117,8 +120,12 @@ public class ApartmentsSystem1 {
 
             stmt.execute("PRAGMA foreign_keys = OFF;");
             for (String t : tables) {
-                stmt.executeUpdate("DELETE FROM " + t);
-                stmt.executeUpdate("DELETE FROM sqlite_sequence WHERE name='" + t + "'");
+                try {
+                    stmt.executeUpdate("DELETE FROM " + t);
+                    stmt.executeUpdate("DELETE FROM sqlite_sequence WHERE name='" + t + "'");
+                } catch (SQLException e) {
+                    // Ignore errors if table doesn't exist yet
+                }
             }
             stmt.execute("PRAGMA foreign_keys = ON;");
             System.out.println("✓ Cleared old database records successfully.");

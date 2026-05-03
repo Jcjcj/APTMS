@@ -134,7 +134,7 @@ public class DatabaseSetup {
                 "INSERT OR IGNORE INTO barangays VALUES (NULL,'Busay','Sirao','Lahug','Kalunasan')",
                 "INSERT OR IGNORE INTO barangays VALUES (NULL,'Cabangcalan','Cambinocot','Bacayan','Pit-os')",
                 "INSERT OR IGNORE INTO barangays VALUES (NULL,'Cambinocot','Binaliw','Cabangcalan','Bacayan')",
-                "INSERT OR IGNORE INTO barangaysays VALUES (NULL,'Camputhaw','Lahug','Apas','Banilad')",
+                "INSERT OR IGNORE INTO barangays VALUES (NULL,'Camputhaw','Lahug','Apas','Banilad')",
                 "INSERT OR IGNORE INTO barangays VALUES (NULL,'Capitol Site','Lahug','Camputhaw','Kalunasan')",
                 "INSERT OR IGNORE INTO barangays VALUES (NULL,'Carreta','Sambag 1','Tejero','Luz')",
                 "INSERT OR IGNORE INTO barangays VALUES (NULL,'Cogon Pardo','Poblacion Pardo','Basak Pardo','Bulacao')",
