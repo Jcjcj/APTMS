@@ -142,14 +142,38 @@ public class SuperAdminDAO {
     }
 
     // Handles the Red X button on the Admin's Inquiry screen
-    public boolean rejectApartmentRegistration(int apartmentId) {
-        String sql = "UPDATE apartments SET approval_status = 'REJECTED' WHERE apartment_id = ?";
+    // Handles the Red X button and saves the reason
+    public boolean rejectApartmentRegistration(int apartmentId, String rejectionReason) {
+        String sql = "UPDATE apartments SET approval_status = 'REJECTED', rejection_reason = ? WHERE apartment_id = ?";
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+             
+            ps.setString(1, rejectionReason);
+            ps.setInt(2, apartmentId);
+            
+            if (ps.executeUpdate() > 0) {
+                // Automatically send a notification to the owner's dashboard
+                String title = "Registration Rejected";
+                String message = "Your apartment registration was rejected. Reason: " + rejectionReason;
+                broadcastNotificationToSpecificApartment(apartmentId, title, message);
+                return true;
+            }
+        } catch (Exception e) {
+            LOGGER.severe("Rejection Error: " + e.getMessage());
+        }
+        return false;
+    }
+
+    // Helper method to notify just ONE apartment owner instead of everyone
+    public boolean broadcastNotificationToSpecificApartment(int apartmentId, String title, String message) {
+        String sql = "INSERT INTO announcements (apartment_id, title, message, date_posted) VALUES (?, ?, ?, CURRENT_DATE)";
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, apartmentId);
+            ps.setString(2, title);
+            ps.setString(3, message);
             return ps.executeUpdate() > 0;
         } catch (Exception e) {
-            LOGGER.severe("Rejection Error: " + e.getMessage());
             return false;
         }
     }

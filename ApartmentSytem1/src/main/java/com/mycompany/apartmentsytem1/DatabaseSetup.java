@@ -61,6 +61,7 @@ public class DatabaseSetup {
                     + "profile_image TEXT,"
                     + "is_active INTEGER DEFAULT 1,"
                     + "approval_status TEXT DEFAULT 'PENDING'," 
+                    + "rejection_reason TEXT," 
                     + "next_billing_date TEXT,"                 
                     + "FOREIGN KEY(owner_id) REFERENCES owners(owner_id) ON DELETE CASCADE)");
 
@@ -136,6 +137,7 @@ public class DatabaseSetup {
                     + "schedule_date TEXT,"
                     + "viewing_time TEXT,"
                     + "status TEXT DEFAULT 'PENDING',"
+                    + "rejection_reason TEXT," 
                     + "temp_username TEXT,"
                     + "temp_password TEXT,"
                     + "FOREIGN KEY(apartment_id) REFERENCES apartments(apartment_id) ON DELETE CASCADE)");

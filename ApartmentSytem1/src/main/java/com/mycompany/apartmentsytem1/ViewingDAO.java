@@ -1,6 +1,8 @@
 package com.mycompany.apartmentsytem1;
 
 import java.sql.*; 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.logging.Logger;
 
 public class ViewingDAO {
@@ -11,47 +13,36 @@ public class ViewingDAO {
      * Books a room viewing and automatically generates temporary login credentials.
      * Returns an array holding [Username, Password] so the UI can display them on the success screen.
      */
-    public String[] bookRoomViewing(int apartmentId, String roomNumber, String tenantName, 
-                                    String contactNumber, String scheduleDate) {
-        
-        // Removes spaces from name and makes it lowercase
+   public String[] bookRoomViewing(int apartmentId, String roomNumber, String tenantName, 
+                                     String contactNumber, String scheduleDate, String viewingTime) { // <-- Added viewingTime parameter
+                                     
         String baseUsername = tenantName.replaceAll("\\s+", "").toLowerCase();
-        
-        // Adds a few random numbers to ensure the username is unique
         String tempUsername = baseUsername + (int)(Math.random() * 1000); 
-        
-        // Generates a random 10-digit number string for the password
         String tempRawPassword = String.format("%010d", (long)(Math.random() * 10000000000L));
-        
-        // Hash the password for database security
         String hashedTempPassword = PasswordUtil.hashPassword(tempRawPassword);
 
+        // Fixed the SQL to insert the exact viewing_time parameter
         String sql = "INSERT INTO viewing_schedule(apartment_id, room_number, tenant_name, " +
                      "contact_number, schedule_date, viewing_time, status, temp_username, temp_password) " +
-                     "VALUES(?,?,?,?,?,'7:00 AM - 4:00 PM','PENDING',?,?)";
+                     "VALUES(?,?,?,?,?,?, 'PENDING',?,?)";
 
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
-
             ps.setInt(1, apartmentId);
             ps.setString(2, roomNumber);
             ps.setString(3, tenantName);
             ps.setString(4, contactNumber);
             ps.setString(5, scheduleDate);
-            ps.setString(6, tempUsername);
-            ps.setString(7, hashedTempPassword);
+            ps.setString(6, viewingTime); // <-- Saving the specific slot (e.g., "08:00 - 09:00")
+            ps.setString(7, tempUsername);
+            ps.setString(8, hashedTempPassword);
 
-            int rowsAffected = ps.executeUpdate();
-
-            if (rowsAffected > 0) {
-                LOGGER.info("Room viewing booked successfully for: " + tenantName);
+            if (ps.executeUpdate() > 0) {
                 return new String[] { tempUsername, tempRawPassword }; 
             }
-
         } catch (Exception e) {
-            LOGGER.severe("Viewing Booking Error: " + e.getMessage());
+            System.out.println("Viewing Booking Error: " + e.getMessage());
         }
-        
         return null; 
     }
 
@@ -109,5 +100,56 @@ public class ViewingDAO {
         }
         
         return null; 
+    }
+    
+    /**
+     * Rejects a room viewing and saves the reason so the temporary user can see it.
+     */
+    public boolean rejectViewing(int scheduleId, String reason) {
+        String sql = "UPDATE viewing_schedule SET status = 'REJECTED', rejection_reason = ? WHERE schedule_id = ?";
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+             
+            ps.setString(1, reason);
+            ps.setInt(2, scheduleId);
+            return ps.executeUpdate() > 0;
+            
+        } catch (Exception e) {
+            LOGGER.severe("Reject Viewing Error: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    // Fetches only the timeslots that are NOT yet booked for a specific room on a specific date
+    public List<String> getAvailableTimeSlots(int apartmentId, String roomNumber, String scheduleDate) {
+        List<String> availableSlots = new ArrayList<>();
+        
+        // 1. Get all 7 default slots from your helper
+        for (String[] slot : TimeSlotHelper.getAllSlots()) {
+            availableSlots.add(slot[0] + " - " + slot[1]);
+        }
+
+        // 2. Look up which slots are already taken on that date
+        String sql = "SELECT viewing_time FROM viewing_schedule " +
+                     "WHERE apartment_id = ? AND room_number = ? AND schedule_date = ? AND status != 'REJECTED'";
+
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+             
+            ps.setInt(1, apartmentId);
+            ps.setString(2, roomNumber);
+            ps.setString(3, scheduleDate);
+            
+            ResultSet rs = ps.executeQuery();
+            
+            // 3. Remove the booked slots from the available list
+            while (rs.next()) {
+                availableSlots.remove(rs.getString("viewing_time"));
+            }
+        } catch (Exception e) {
+            System.out.println("Timeslot Error: " + e.getMessage());
+        }
+        
+        return availableSlots; // Sends only the remaining free slots to the dropdown
     }
 }

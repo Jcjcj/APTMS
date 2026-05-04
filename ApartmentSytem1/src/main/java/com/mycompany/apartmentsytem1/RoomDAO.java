@@ -58,4 +58,40 @@ public class RoomDAO {
             return false;
         }
     }
+    
+    // Returns only rooms that are "Available" AND have at least 1 free timeslot on the requested date
+    public List<String> getAvailableRoomsOnDate(int apartmentId, String scheduleDate) {
+        List<String> rooms = new ArrayList<>();
+        
+        // This query hides any room that appears in the viewing_schedule table 7 or more times for the selected date
+        String sql = "SELECT r.room_number, r.rent_amount, r.capacity_text " +
+                     "FROM rooms r " +
+                     "WHERE r.apartment_id = ? AND r.status = 'Available' " +
+                     "AND r.room_number NOT IN (" +
+                     "    SELECT room_number FROM viewing_schedule " +
+                     "    WHERE apartment_id = ? AND schedule_date = ? AND status != 'REJECTED' " +
+                     "    GROUP BY room_number " +
+                     "    HAVING COUNT(viewing_time) >= 7" + // 7 is the total number of slots in TimeSlotHelper
+                     ") ORDER BY r.room_number ASC";
+
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+             
+            ps.setInt(1, apartmentId);
+            ps.setInt(2, apartmentId);
+            ps.setString(3, scheduleDate);
+            
+            ResultSet rs = ps.executeQuery();
+            
+            while (rs.next()) {
+                rooms.add("Room: " + rs.getString("room_number") + 
+                          " | Rent: PHP " + rs.getDouble("rent_amount") + 
+                          " | Capacity: " + rs.getString("capacity_text"));
+            }
+        } catch (Exception e) {
+            System.out.println("Get Available Rooms Error: " + e.getMessage());
+        }
+        
+        return rooms;
+    }
 }
