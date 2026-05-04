@@ -153,5 +153,34 @@ public class TenantDashboardDAO {
         }
         return list;
     }
-    
+ // --- TENANT HISTORY TAB METHODS ---
+
+    // 1. Fetch Tenant's Personal Bill History (Only Paid)
+    public List<String> getMyBillHistory(int tenantId) {
+        List<String> list = new ArrayList<>();
+        String sql = "SELECT month, total, payment_date FROM bills WHERE tenant_id = ? AND paid = 1 ORDER BY payment_date DESC";
+        try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, tenantId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                list.add("Month: " + rs.getString("month") + " | PHP " + rs.getDouble("total") + " | Paid: " + rs.getString("payment_date"));
+            }
+        } catch (Exception e) { LOGGER.severe("Tenant Bill History Error: " + e.getMessage()); }
+        return list;
+    }
+
+    // 2. Fetch Tenant's Past Complaints/Suggestions
+    public List<String> getMyComplaintsHistory(int apartmentId, String roomNumber) {
+        List<String> list = new ArrayList<>();
+        String sql = "SELECT message, date_submitted FROM complaints WHERE apartment_id = ? AND room_number = ? ORDER BY date_submitted DESC";
+        try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, apartmentId);
+            ps.setString(2, roomNumber);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                list.add(rs.getString("date_submitted") + ": " + rs.getString("message"));
+            }
+        } catch (Exception e) { LOGGER.severe("Tenant Complaints History Error: " + e.getMessage()); }
+        return list;
+    }   
 }

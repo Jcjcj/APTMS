@@ -219,4 +219,127 @@ public class OwnerDashboardDAO {
         }
         return false;
     }
+    
+    // --- OWNER HISTORY TAB METHODS ---
+
+    // 1. Fetch Bills History (Only Paid Bills)
+    public List<String> getBillsHistory(int apartmentId) {
+        List<String> list = new ArrayList<>();
+        String sql = "SELECT room_number, total, payment_date FROM bills JOIN registered_tenants ON bills.tenant_id = registered_tenants.tenant_id WHERE bills.apartment_id = ? AND bills.paid = 1 ORDER BY bills.payment_date DESC";
+        try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, apartmentId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                list.add("Room " + rs.getString("room_number") + " | PHP " + rs.getDouble("total") + " | Paid: " + rs.getString("payment_date"));
+            }
+        } catch (Exception e) { LOGGER.severe("Bills History Error: " + e.getMessage()); }
+        return list;
+    }
+
+    // 2. Fetch Maintenance History (Only Completed Requests)
+    public List<String> getMaintenanceHistory(int apartmentId) {
+        List<String> list = new ArrayList<>();
+        String sql = "SELECT room_number, issue_description, date_resolved FROM maintenance_requests WHERE apartment_id = ? AND status = 'COMPLETED' ORDER BY date_resolved DESC";
+        try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, apartmentId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                list.add("Room " + rs.getString("room_number") + " | " + rs.getString("issue_description") + " | Resolved: " + rs.getString("date_resolved"));
+            }
+        } catch (Exception e) { LOGGER.severe("Maintenance History Error: " + e.getMessage()); }
+        return list;
+    }
+
+    // 3. Fetch Notification History (Past Broadcasts)
+    public List<String> getNotificationHistory(int apartmentId) {
+        List<String> list = new ArrayList<>();
+        String sql = "SELECT title, message, date_posted FROM announcements WHERE apartment_id = ? ORDER BY date_posted DESC";
+        try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, apartmentId);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                list.add(rs.getString("title") + " - " + rs.getString("date_posted") + "\n" + rs.getString("message"));
+            }
+        } catch (Exception e) { LOGGER.severe("Notification History Error: " + e.getMessage()); }
+        return list;
+    }
+    
+    // NEW: Fetches the left side of the "To Do's" screen (Pending Maintenance)
+    public List<String[]> getPendingMaintenance(int apartmentId) {
+        List<String[]> list = new ArrayList<>();
+        String sql = "SELECT request_id, room_number, issue_description FROM maintenance_requests WHERE apartment_id = ? AND status = 'PENDING' ORDER BY date_reported ASC";
+        
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, apartmentId);
+            ResultSet rs = ps.executeQuery();
+            
+            while (rs.next()) {
+                // Returning array: [Request ID, Room Number, Issue]
+                list.add(new String[] {
+                    String.valueOf(rs.getInt("request_id")), 
+                    rs.getString("room_number"), 
+                    rs.getString("issue_description")
+                });
+            }
+        } catch (Exception e) {
+            LOGGER.severe("Get Pending Maintenance Error: " + e.getMessage());
+        }
+        return list;
+    }
+    
+    
+    // NEW: Replaces the slow 1-by-1 update with a massive batch update for the big green UPDATE button
+    public boolean batchUpdateRoomBills(int apartmentId, List<String> roomNumbers, List<Double> rents, List<Double> elecs, List<Double> waters, List<Double> internets) {
+        String updateSql = "UPDATE room_bills SET rent_amount=?, electricity_amount=?, water_amount=?, internet_amount=? WHERE apartment_id=? AND room_number=?";
+        
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(updateSql)) {
+            
+            for (int i = 0; i < roomNumbers.size(); i++) {
+                ps.setDouble(1, rents.get(i));
+                ps.setDouble(2, elecs.get(i));
+                ps.setDouble(3, waters.get(i));
+                ps.setDouble(4, internets.get(i));
+                ps.setInt(5, apartmentId);
+                ps.setString(6, roomNumbers.get(i));
+                
+                ps.addBatch(); // Queue it up!
+            }
+            
+            int[] results = ps.executeBatch(); // Fire all at once
+            return results.length > 0;
+            
+        } catch (Exception e) {
+            LOGGER.severe("Batch Room Update Error: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    // NEW: Fetches pending room viewings to populate the left side of the Owner's Inquiry screen
+    public List<String[]> getPendingRoomViewings(int apartmentId) {
+        List<String[]> list = new ArrayList<>();
+        String sql = "SELECT schedule_id, tenant_name, room_number, schedule_date FROM viewing_schedule WHERE apartment_id = ? AND status = 'PENDING'";
+        
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setInt(1, apartmentId);
+            ResultSet rs = ps.executeQuery();
+            
+            while (rs.next()) {
+                // Returns: [ID, Name, Room, Date]
+                list.add(new String[] {
+                    String.valueOf(rs.getInt("schedule_id")),
+                    rs.getString("tenant_name"),
+                    "Room " + rs.getString("room_number"),
+                    rs.getString("schedule_date")
+                });
+            }
+        } catch (Exception e) {
+            LOGGER.severe("Get Viewings Error: " + e.getMessage());
+        }
+        return list;
+    }
 }

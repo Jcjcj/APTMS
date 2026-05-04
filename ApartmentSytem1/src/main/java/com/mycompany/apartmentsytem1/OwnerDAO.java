@@ -3,6 +3,7 @@ package com.mycompany.apartmentsytem1;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.logging.Logger;
@@ -10,17 +11,19 @@ import java.util.logging.Logger;
 public class OwnerDAO {
     private static final Logger LOGGER = Logger.getLogger(OwnerDAO.class.getName());
 
-    public boolean registerOwner(String name, String contactNumber, String email, String address, String emergency, String validId, String username, String password) {
-        
+   public int registerOwner(String name, String contactNumber, String email, String address, String emergency, String validId, String username, String password) {
         // DATA VALIDATION
         if (name == null || name.trim().isEmpty() || username == null || username.trim().isEmpty() || password == null || password.length() < 6) {
             LOGGER.warning("Validation Failed: Missing required owner details or password too short.");
-            return false;
+            return -1; // -1 means failure
         }
-
+        
         String sql = "INSERT INTO owners(name, contact_number, email, address, emergency_number, valid_id, username, password, is_active) VALUES(?,?,?,?,?,?,?,?,1)";
+        
         try (Connection conn = DBConnection.connect();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+             // CRITICAL: Request the generated keys!
+             PreparedStatement ps = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+            
             ps.setString(1, name);
             ps.setString(2, contactNumber);
             ps.setString(3, email);
@@ -30,12 +33,18 @@ public class OwnerDAO {
             ps.setString(7, username);
             ps.setString(8, PasswordUtil.hashPassword(password));
             ps.executeUpdate();
-            LOGGER.info("Owner registered successfully: " + username);
-            return true;
+            
+            // Catch the new Owner ID and return it to the frontend
+            ResultSet rs = ps.getGeneratedKeys();
+            if (rs.next()) {
+                int newOwnerId = rs.getInt(1);
+                LOGGER.info("Owner registered successfully: " + username + " | ID: " + newOwnerId);
+                return newOwnerId; 
+            }
         } catch (Exception e) {
             LOGGER.severe("Owner Register Error: " + e.getMessage());
-            return false;
         }
+        return -1;
     }
 
     public boolean updateTenantStatus(int tenantId, String status) {
@@ -200,6 +209,27 @@ public class OwnerDAO {
             System.out.println("Owner Login Error: " + e.getMessage());
         }
         return -1; // Login failed
+    }
+    
+    // NEW: Allows the owner to edit a tenant's basic details (The Pencil Icon)
+    public boolean editTenantDetails(int tenantId, String newName, String newContact, String newEmail, String newEmergency) {
+        String sql = "UPDATE registered_tenants SET name = ?, contact_number = ?, email = ?, emergency_contact = ? WHERE tenant_id = ?";
+        
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setString(1, newName);
+            ps.setString(2, newContact);
+            ps.setString(3, newEmail);
+            ps.setString(4, newEmergency);
+            ps.setInt(5, tenantId);
+            
+            return ps.executeUpdate() > 0;
+            
+        } catch (Exception e) {
+            LOGGER.severe("Edit Tenant Error: " + e.getMessage());
+            return false;
+        }
     }
     
 }

@@ -95,18 +95,19 @@ public class ApartmentDAO {
 
 
     // 2. Saves the right side of your UI form (Clicking "Add Room")
+    // FIXED: Now properly captures the Utility types from the UI dropdowns
     public boolean addRoomFromUI(int apartmentId, String roomNumber, int roomFloor, String roomDetails, 
-                                 double rent, double downPayment, double secDeposit, String roomImage) {
-
-        String insertRoom = "INSERT INTO rooms(apartment_id, room_number, room_floor, room_details, rent_amount, down_payment, security_deposit, room_image) VALUES(?,?,?,?,?,?,?,?)";
+                                  double rent, double downPayment, double secDeposit, String roomImage,
+                                  String electricityType, String waterType, String internetType) { // <-- Added parameters
+                                  
+        String insertRoom = "INSERT INTO rooms(apartment_id, room_number, room_floor, room_details, rent_amount, down_payment, security_deposit, room_image, electricity_type, water_type, internet_type) VALUES(?,?,?,?,?,?,?,?,?,?,?)";
         String updateCounts = "UPDATE apartments SET total_rooms = total_rooms + 1, rooms_available = rooms_available + 1 WHERE apartment_id = ?";
         
         try (Connection conn = DBConnection.connect()) {
             conn.setAutoCommit(false); 
-            
             try (PreparedStatement psRoom = conn.prepareStatement(insertRoom);
                  PreparedStatement psApt = conn.prepareStatement(updateCounts)) {
-                
+                 
                 psRoom.setInt(1, apartmentId);
                 psRoom.setString(2, roomNumber);
                 psRoom.setInt(3, roomFloor);
@@ -115,6 +116,9 @@ public class ApartmentDAO {
                 psRoom.setDouble(6, downPayment);
                 psRoom.setDouble(7, secDeposit);
                 psRoom.setString(8, roomImage);
+                psRoom.setString(9, electricityType); // <-- Saving correctly
+                psRoom.setString(10, waterType);      // <-- Saving correctly
+                psRoom.setString(11, internetType);   // <-- Saving correctly
                 psRoom.executeUpdate();
                 
                 psApt.setInt(1, apartmentId);
@@ -122,15 +126,12 @@ public class ApartmentDAO {
                 
                 conn.commit();
                 return true;
-                
             } catch (Exception e) {
                 conn.rollback();
-                LOGGER.severe(() -> "Add Room Failed: " + e.getMessage());
+                LOGGER.severe("Add Room Failed: " + e.getMessage());
                 return false;
             }
-        } catch (Exception e) { 
-            return false; 
-        }
+        } catch (Exception e) { return false; }
     }
 
     // 3. Search logic for UI Page 2 (Public Search)
@@ -243,16 +244,48 @@ public class ApartmentDAO {
         return "APT-" + (int)(Math.random() * 9000 + 1000); 
     }
 
-    private void generateCustomRooms(Connection conn, int newId, List<Integer> roomsPerFloorList, 
-                                     List<List<Double>> rentPricesPerFloor, List<List<Double>> downPaymentsPerFloor, 
-                                     List<List<Double>> securityDepositsPerFloor) {
+    private void generateCustomRooms(Connection conn, int newId, List<Integer> roomsPerFloorList,
+                                      List<List<Double>> rentPricesPerFloor, List<List<Double>> downPaymentsPerFloor,
+                                      List<List<Double>> securityDepositsPerFloor) {
         
-        // Failsafe: If no room data is provided, just exit safely without crashing
+        // Failsafe: If no room data is provided, exit safely
         if (roomsPerFloorList == null || roomsPerFloorList.isEmpty()) return;
 
-        // Note: For a quick 24-hour fix, this simply avoids the crash. 
-        // If your UI currently adds rooms one-by-one via addRoomFromUI(), 
-        // this method can remain safely empty so it doesn't duplicate rooms.
-        System.out.println("Custom rooms generated for Apartment ID: " + newId);
+        // Uses a single prepared statement to blast the entire array into the database at once
+        String sql = "INSERT INTO rooms(apartment_id, room_number, room_floor, rent_amount, down_payment, security_deposit) VALUES(?,?,?,?,?,?)";
+        
+        try (PreparedStatement ps = conn.prepareStatement(sql)) {
+            int roomCounter = 1;
+            
+            for (int floorIndex = 0; floorIndex < roomsPerFloorList.size(); floorIndex++) {
+                int roomsOnThisFloor = roomsPerFloorList.get(floorIndex);
+                int floorNumber = floorIndex + 1;
+
+                for (int i = 0; i < roomsOnThisFloor; i++) {
+                    // Generates names like "Room 1 - 1F", matching your UI
+                    String roomNum = "Room " + roomCounter + " - " + floorNumber + "F";
+                    
+                    // Safely pull the financial data (defaulting to 0.0 if the lists are mismatched)
+                    double rent = (rentPricesPerFloor != null && rentPricesPerFloor.size() > floorIndex && rentPricesPerFloor.get(floorIndex).size() > i) ? rentPricesPerFloor.get(floorIndex).get(i) : 0.0;
+                    double down = (downPaymentsPerFloor != null && downPaymentsPerFloor.size() > floorIndex && downPaymentsPerFloor.get(floorIndex).size() > i) ? downPaymentsPerFloor.get(floorIndex).get(i) : 0.0;
+                    double sec = (securityDepositsPerFloor != null && securityDepositsPerFloor.size() > floorIndex && securityDepositsPerFloor.get(floorIndex).size() > i) ? securityDepositsPerFloor.get(floorIndex).get(i) : 0.0;
+
+                    ps.setInt(1, newId);
+                    ps.setString(2, roomNum);
+                    ps.setInt(3, floorNumber);
+                    ps.setDouble(4, rent);
+                    ps.setDouble(5, down);
+                    ps.setDouble(6, sec);
+                    
+                    ps.addBatch(); // Queue it up!
+                    roomCounter++;
+                }
+            }
+            ps.executeBatch(); // Fire the whole queue to the database
+            LOGGER.info("Batch Custom Rooms successfully generated for Apartment ID: " + newId);
+            
+        } catch (Exception e) {
+            LOGGER.severe("Batch Room Generation Error: " + e.getMessage());
+        }
     }
 }
