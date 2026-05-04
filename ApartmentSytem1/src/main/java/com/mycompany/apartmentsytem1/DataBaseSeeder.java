@@ -1,177 +1,118 @@
 package com.mycompany.apartmentsytem1;
 
-import java.util.Scanner;
 import java.sql.*;
+import java.time.LocalDate;
 
 public class DataBaseSeeder {
-    private static final Scanner scanner = new Scanner(System.in);
 
-    public static void runFullSystemTest() {
-        while (true) {
-            System.out.println("\n===========================================");
-            System.out.println("   MASTER TESTER: LOGIN & FEATURE LOOP     ");
-            System.out.println("===========================================");
-            System.out.println("1. SUPER ADMIN");
-            System.out.println("2. OWNER");
-            System.out.println("3. TENANT");
-            System.out.println("4. PUBLIC SEARCH (No Login Required)");
-            System.out.println("5. VIEW ALL TABLES (Debug View)");
-            System.out.println("0. EXIT");
-            System.out.print("\nSelect Role: ");
-
-            String choice = scanner.nextLine();
-            if (choice.equals("0")) break;
-
-            switch (choice) {
-                case "1": authWrapper("super_admins"); break;
-                case "2": authWrapper("owners"); break;
-                case "3": authWrapper("registered_tenants"); break;
-                case "4": searchModule(); break;
-                case "5": viewHistoryModule(); break;
-                default: System.out.println("Invalid selection.");
-            }
-        }
-    }
-
-    // --- AUTHENTICATION GATE ---
-    private static void authWrapper(String table) {
-        System.out.println("\n--- " + table.toUpperCase() + " ACCESS ---");
-        System.out.println("1. Login");
-        System.out.println("2. Sign Up");
-        System.out.print("Choice: ");
-        String choice = scanner.nextLine();
-
-        if (choice.equals("2")) {
-            handleSignUp(table);
-        } else if (choice.equals("1")) {
-            if (handleLogin(table)) {
-                // Route to the correct menu based on the table
-                if (table.equals("super_admins")) superAdminFeatures();
-                else if (table.equals("owners")) ownerFeatures();
-                else if (table.equals("registered_tenants")) tenantFeatures();
-            } else {
-                System.out.println("Login Failed! Incorrect credentials.");
-            }
-        }
-    }
-
-    private static boolean handleLogin(String table) {
-        System.out.print("Username: "); String user = scanner.nextLine();
-        System.out.print("Password: "); String pass = scanner.nextLine();
-
-        String sql = "SELECT password FROM " + table + " WHERE username = ?";
-        try (Connection c = DBConnection.connect(); PreparedStatement ps = c.prepareStatement(sql)) {
-            ps.setString(1, user);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) {
-                String hashed = rs.getString("password");
-                return PasswordUtil.checkPassword(pass, hashed); // Verifying the hash
-            }
-        } catch (Exception e) { System.err.println("Login Error: " + e.getMessage()); }
-        return false;
-    }
-
-    private static void handleSignUp(String table) {
-        System.out.print("Enter New Username: "); String u = scanner.nextLine();
-        System.out.print("Enter New Password: "); String p = PasswordUtil.hashPassword(scanner.nextLine());
+    // NO CONSOLE MENUS. JUST PURE DATA INJECTION.
+    public static void seedMassiveData() {
+        System.out.println("\n[INJECTING THOUSANDS OF ROWS TO ALL TABLES... PLEASE WAIT]");
         
-        if (table.equals("owners")) {
-            System.out.print("Full Name: "); String n = scanner.nextLine();
-            execute("INSERT INTO owners (name, username, password, is_active) VALUES (?, ?, ?, 1)", n, u, p);
-        } else if (table.equals("registered_tenants")) {
-            System.out.print("Full Name: "); String n = scanner.nextLine();
-            execute("INSERT INTO registered_tenants (name, username, password, is_active, approval_status) VALUES (?, ?, ?, 1, 'PENDING')", n, u, p);
-        } else {
-            execute("INSERT INTO super_admins (username, password) VALUES (?, ?)", u, p);
-        }
-        System.out.println("Sign Up Successful!");
-    }
-
-    // --- ROLE-SPECIFIC FEATURES (Accessed only after login) ---
-   // --- ROLE-SPECIFIC FEATURES (Accessed only after login) ---
-    private static void superAdminFeatures() {
-        System.out.println("\n[LOGGED IN AS ADMIN]");
+        String[] firsts = {"Juan", "Maria", "Pedro", "Ana", "Luis", "Carmen", "Jose", "Rosa", "Carlos", "Elena"};
+        String[] lasts = {"Cruz", "Santos", "Reyes", "Bautista", "Ocampo", "Garcia", "Mendoza", "Torres", "Vilanueva", "Lim"};
+        String[] brgys = {"Lahug", "Mabolo", "Apas", "Talamban", "Guadalupe", "Capitol Site"};
+        String[] aptSuffix = {"Residences", "Lofts", "Dorms", "Apartments", "Suites", "Flats"};
+        String[] issues = {"Leaking pipe under the sink.", "Aircon is not cooling.", "No internet connection.", "Flickering lights in hallway.", "Clogged shower drain."};
         
-        // 1. Show the Pending List First
-        String listSql = "SELECT apartment_id, apartment_name FROM apartments WHERE approval_status = 'PENDING'";
-        boolean hasPending = false;
+        String pass = PasswordUtil.hashPassword("pass123");
+        String today = LocalDate.now().toString();
 
-        try (Connection c = DBConnection.connect(); 
-             Statement stmt = c.createStatement(); 
-             ResultSet rs = stmt.executeQuery(listSql)) {
-            
-            System.out.println("\n--- PENDING APARTMENTS WAITING FOR APPROVAL ---");
-            while (rs.next()) {
-                hasPending = true;
-                System.out.println("ID: " + rs.getInt("apartment_id") + " | Name: " + rs.getString("apartment_name"));
+        try (Connection conn = DBConnection.connect();
+             Statement stmt = conn.createStatement()) {
+
+            conn.setAutoCommit(false); 
+
+            // 1. SUPER ADMIN (Login: admin / pass123)
+            stmt.addBatch("INSERT OR IGNORE INTO super_admins (username, password) VALUES ('admin', '" + pass + "')");
+
+            // 2. OWNERS (10 Owners - Login: owner1 to owner10 / pass123)
+            for(int i=1; i<=10; i++) {
+                String name = firsts[i%10] + " " + lasts[i%10];
+                stmt.addBatch("INSERT INTO owners (name, contact_number, email, address, emergency_number, valid_id, username, password, is_active) " +
+                              "VALUES ('" + name + "', '091700000" + i + "', 'owner"+i+"@test.com', 'Cebu City', '091800000" + i + "', 'ID-00" + i + "', 'owner"+i+"', '" + pass + "', 1)");
             }
-        } catch (Exception e) { 
-            System.err.println("Error fetching list: " + e.getMessage()); 
-        }
 
-        // 2. Logical Check: If nothing is pending, stop here.
-        if (!hasPending) {
-            System.out.println("There is no pending apartment waiting for approval.");
-            return; // Go back to the admin menu
-        }
-
-        // 3. If there are pending items, ask for the ID
-        try {
-            System.out.print("\nEnter Apartment ID to Approve: ");
-            int id = Integer.parseInt(scanner.nextLine());
-            
-            // Execute the update
-            execute("UPDATE apartments SET approval_status = 'APPROVED' WHERE apartment_id = ?", id);
-            System.out.println("Apartment ID " + id + " successfully APPROVED!");
-        } catch (NumberFormatException e) {
-            System.out.println("Invalid input. Please enter a numeric ID.");
-        }
-    }
-
-    private static void ownerFeatures() {
-        System.out.println("\n[LOGGED IN AS OWNER]");
-        System.out.print("Apartment Name: "); String an = scanner.nextLine();
-        execute("INSERT INTO apartments (apartment_name, owner_id, approval_status) VALUES (?, 1, 'PENDING')", an);
-        System.out.println("Apartment Registered (Pending Admin Approval).");
-    }
-
-    private static void tenantFeatures() {
-        System.out.println("\n[LOGGED IN AS TENANT]");
-        System.out.print("GCash Ref for Payment: "); String ref = scanner.nextLine();
-        execute("INSERT INTO payment_transactions (apartment_id, reference_no, status, date_paid) VALUES (1, ?, 'PAID', '2026-05-04')", ref);
-        System.out.println("Payment Logged!");
-    }
-
-    // --- UTILITIES ---
-    private static void searchModule() {
-        System.out.print("\nSearch Apartment Name: ");
-        String s = scanner.nextLine();
-        query("SELECT apartment_name, approval_status FROM apartments WHERE apartment_name LIKE ?", "%"+s+"%");
-    }
-
-    private static void viewHistoryModule() {
-        System.out.println("\n--- DATABASE SNAPSHOT ---");
-        System.out.println("[ADMINS]"); query("SELECT admin_id, username FROM super_admins", null);
-        System.out.println("[APARTMENTS]"); query("SELECT apartment_id, apartment_name, approval_status FROM apartments", null);
-        System.out.println("[PAYMENTS]"); query("SELECT * FROM payment_transactions", null);
-    }
-
-    private static void execute(String sql, Object... p) {
-        try (Connection c = DBConnection.connect(); PreparedStatement ps = c.prepareStatement(sql)) {
-            for (int i=0; i<p.length; i++) ps.setObject(i+1, p[i]);
-            ps.executeUpdate();
-        } catch (Exception e) { System.err.println("SQL Error: " + e.getMessage()); }
-    }
-
-    private static void query(String sql, String p) {
-        try (Connection c = DBConnection.connect(); PreparedStatement ps = c.prepareStatement(sql)) {
-            if (p != null) ps.setString(1, p);
-            ResultSet rs = ps.executeQuery();
-            ResultSetMetaData md = rs.getMetaData();
-            while (rs.next()) {
-                for (int i=1; i<=md.getColumnCount(); i++) System.out.print(rs.getString(i) + " | ");
-                System.out.println();
+            // 3. APARTMENTS (20 Apartments - 2 per owner)
+            for(int i=1; i<=20; i++) {
+                int ownerId = ((i-1) % 10) + 1; 
+                String aptName = lasts[i%10] + " " + aptSuffix[i%6] + " " + i;
+                String brgy = brgys[i%6];
+                stmt.addBatch("INSERT INTO apartments (apartment_name, owner_id, floors, total_rooms, rooms_available, capital, payment_method, barangay, electricity, water, internet, is_active, approval_status) " +
+                              "VALUES ('" + aptName + "', " + ownerId + ", 3, 10, 10, 500000, 'GCash', '" + brgy + "', 'Meter', 'Meter', 'Plan', 1, 'APPROVED')");
             }
-        } catch (Exception e) { System.err.println("Query Error: " + e.getMessage()); }
+
+            // 4. ROOMS (200 Rooms - 10 per Apartment)
+            for(int aptId=1; aptId<=20; aptId++) {
+                for(int r=1; r<=10; r++) {
+                    String roomNum = aptId + "0" + r; 
+                    double rent = 4000 + (Math.round(Math.random() * 6000)); 
+                    stmt.addBatch("INSERT INTO rooms (apartment_id, room_number, status, rent_amount, capacity_text, utilities_text, design_text) " +
+                                  "VALUES (" + aptId + ", '" + roomNum + "', 'Available', " + rent + ", '2 Persons', 'Free WiFi', 'Standard Studio')");
+                }
+            }
+
+            // 5. TENANTS (100 Tenants - Login: tenant1 to tenant100 / pass123)
+            for(int i=1; i<=100; i++) {
+                String name = firsts[(i+3)%10] + " " + lasts[(i+2)%10] + " " + i;
+                int targetApt = ((i-1) % 20) + 1;
+                int targetRoom = ((i-1) % 10) + 1;
+                String roomNum = targetApt + "0" + targetRoom;
+                stmt.addBatch("INSERT INTO registered_tenants (name, contact_number, email, emergency_contact, username, password, target_apartment_id, target_room_number, move_in_date, occupants, approval_status, is_active) " +
+                              "VALUES ('" + name + "', '09990000" + i + "', 'tenant"+i+"@test.com', '09191234567', 'tenant"+i+"', '" + pass + "', " + targetApt + ", '" + roomNum + "', '" + today + "', 2, 'APPROVED', 1)");
+            }
+
+            // 6. OCCUPANCY & UPDATE APARTMENT CAPACITY
+            for(int i=1; i<=100; i++) {
+                int aptId = ((i-1) % 20) + 1;
+                int roomIdx = ((i-1) % 10) + 1;
+                String roomNum = aptId + "0" + roomIdx;
+                stmt.addBatch("INSERT INTO room_occupancy (apartment_id, room_number, tenant_id, move_in_date, status) VALUES (" + aptId + ", '" + roomNum + "', " + i + ", '" + today + "', 'Current')");
+                stmt.addBatch("UPDATE rooms SET status = 'Occupied' WHERE apartment_id = " + aptId + " AND room_number = '" + roomNum + "'");
+                stmt.addBatch("UPDATE apartments SET rooms_available = rooms_available - 1 WHERE apartment_id = " + aptId);
+            }
+
+            // 7. MASSIVE DATA: BILLS, EXPENSES, PAYMENTS, MAINTENANCE, COMPLAINTS
+            for(int i=1; i<=100; i++) {
+                int aptId = ((i-1) % 20) + 1;
+                int roomIdx = ((i-1) % 10) + 1;
+                String roomNum = aptId + "0" + roomIdx;
+                
+                // Room Bills
+                stmt.addBatch("INSERT INTO room_bills (apartment_id, room_number, rent_amount, electricity_amount, water_amount, internet_amount) " +
+                              "VALUES (" + aptId + ", '" + roomNum + "', 5500, 1500, 300, 500)");
+                
+                // Financial Bills Table
+                stmt.addBatch("INSERT INTO bills (tenant_id, apartment_id, month, rent, electricity, water, internet, tax, penalty, total, due_date, paid) " +
+                              "VALUES (" + i + ", " + aptId + ", '2026-04', 5500, 1500, 300, 500, 0, 0, 7800, '2026-04-15', 1)");
+                
+                // Payment History
+                stmt.addBatch("INSERT INTO payment_transactions (apartment_id, tenant_id, room_number, payment_method, reference_no, date_paid, status) " +
+                              "VALUES (" + aptId + ", " + i + ", '" + roomNum + "', 'GCash', 'REF-2026-" + i + "99', '2026-04-10', 'PAID')");
+                
+                // Maintenance Requests
+                String issue = issues[i % 5];
+                stmt.addBatch("INSERT INTO maintenance_requests (apartment_id, room_number, tenant_id, issue_description, priority_level, status, date_reported) " +
+                              "VALUES (" + aptId + ", '" + roomNum + "', " + i + ", '" + issue + "', 'MEDIUM', 'PENDING', '" + today + "')");
+                
+                // Complaints
+                stmt.addBatch("INSERT INTO complaints (apartment_id, room_number, message, date_submitted) " +
+                              "VALUES (" + aptId + ", '" + roomNum + "', 'Loud noises from the hallway late at night.', '" + today + "')");
+                
+                // Building & Room Expenses
+                stmt.addBatch("INSERT INTO expenses (apartment_id, room_number, expense_category, amount, expense_date, month, description) " +
+                              "VALUES (" + aptId + ", NULL, 'Maintenance', 2000, '" + today + "', '2026-05', 'Routine cleaning')");
+                stmt.addBatch("INSERT INTO expenses (apartment_id, room_number, expense_category, amount, expense_date, month, description) " +
+                              "VALUES (" + aptId + ", '" + roomNum + "', 'Repair', 500, '" + today + "', '2026-05', 'Fixed lock')");
+            }
+
+            stmt.executeBatch();
+            conn.commit();
+            
+            System.out.println("SUCCESS! AUTOMATIC DATA INJECTION COMPLETE.");
+
+        } catch (Exception e) {
+            System.err.println("Massive Seeding Error: " + e.getMessage());
+        }
     }
 }

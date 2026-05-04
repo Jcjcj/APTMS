@@ -31,7 +31,6 @@ public class DatabaseSetup {
                     + "is_active INTEGER DEFAULT 1)");
 
             // APARTMENTS TABLE
-         // APARTMENTS TABLE
             stmt.execute("CREATE TABLE IF NOT EXISTS apartments ("
                     + "apartment_id INTEGER PRIMARY KEY AUTOINCREMENT,"
                     + "apartment_code TEXT UNIQUE,"
@@ -56,11 +55,11 @@ public class DatabaseSetup {
                     + "emergency_number TEXT,"
                     + "profile_image TEXT,"
                     + "is_active INTEGER DEFAULT 1,"
-                    + "approval_status TEXT DEFAULT 'PENDING'," // <-- ADDED: For Super Admin Inquiries (Approve/Reject)
-                    + "next_billing_date TEXT,"                 // <-- ADDED: For Super Admin Notifications (Due Dates)
+                    + "approval_status TEXT DEFAULT 'PENDING'," 
+                    + "next_billing_date TEXT,"                 
                     + "FOREIGN KEY(owner_id) REFERENCES owners(owner_id) ON DELETE CASCADE)");
 
-            // ROOMS TABLE (With capacity_text, utilities_text, design_text)
+            // ROOMS TABLE 
             stmt.execute("CREATE TABLE IF NOT EXISTS rooms ("
                     + "room_id INTEGER PRIMARY KEY AUTOINCREMENT,"
                     + "apartment_id INTEGER,"
@@ -87,7 +86,6 @@ public class DatabaseSetup {
                     + "address TEXT,"
                     + "emergency_contact TEXT,"
                     + "username TEXT UNIQUE,"
-                    + "username TEXT,"
                     + "password TEXT,"
                     + "target_apartment_id INTEGER,"
                     + "target_room_number TEXT,"
@@ -99,7 +97,7 @@ public class DatabaseSetup {
                     + "moved_out_date TEXT,"
                     + "FOREIGN KEY(target_apartment_id) REFERENCES apartments(apartment_id))");
 
-            // ROOM OCCUPANCY TABLE (Reverted back to normal, no occupants_count)
+            // ROOM OCCUPANCY TABLE 
             stmt.execute("CREATE TABLE IF NOT EXISTS room_occupancy ("
                     + "occupancy_id INTEGER PRIMARY KEY AUTOINCREMENT,"
                     + "apartment_id INTEGER,"
@@ -111,21 +109,7 @@ public class DatabaseSetup {
                     + "FOREIGN KEY(apartment_id) REFERENCES apartments(apartment_id),"
                     + "FOREIGN KEY(tenant_id) REFERENCES registered_tenants(tenant_id))");
 
-            // VIEWING SCHEDULE TABLE
-            stmt.execute("CREATE TABLE IF NOT EXISTS viewing_schedule ("
-                    + "schedule_id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                    + "apartment_id INTEGER,"
-                    + "tenant_name TEXT,"
-                    + "contact_number TEXT,"
-                    + "schedule_date TEXT,"
-                    + "start_time TEXT,"
-                    + "end_time TEXT,"
-                    + "status TEXT DEFAULT 'PENDING'," 
-                    + "temp_username TEXT UNIQUE," 
-                    + "temp_password TEXT,"
-                    + "FOREIGN KEY(apartment_id) REFERENCES apartments(apartment_id))");
-                    
-            // MAINTENANCE REQUESTS TABLE
+            // MAINTENANCE REQUESTS TABLE (Combined and Fixed)
             stmt.execute("CREATE TABLE IF NOT EXISTS maintenance_requests ("
                     + "request_id INTEGER PRIMARY KEY AUTOINCREMENT, "
                     + "apartment_id INTEGER, room_number TEXT, tenant_id INTEGER, "
@@ -135,17 +119,7 @@ public class DatabaseSetup {
                     + "FOREIGN KEY (apartment_id) REFERENCES apartments(apartment_id), "
                     + "FOREIGN KEY (tenant_id) REFERENCES registered_tenants(tenant_id))");
 
-            
-
-            // BARANGAYS TABLE
-            stmt.execute("CREATE TABLE IF NOT EXISTS barangays ("
-                    + "barangay_id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                    + "name TEXT UNIQUE,"
-                    + "nearby_1 TEXT,"
-                    + "nearby_2 TEXT,"
-                    + "nearby_3 TEXT)");
-            
-            // Table for Room Viewings and Temporary Credentials
+            // VIEWING SCHEDULE TABLE
             stmt.execute("CREATE TABLE IF NOT EXISTS viewing_schedule ("
                     + "schedule_id INTEGER PRIMARY KEY AUTOINCREMENT,"
                     + "apartment_id INTEGER,"
@@ -158,6 +132,101 @@ public class DatabaseSetup {
                     + "temp_username TEXT,"
                     + "temp_password TEXT,"
                     + "FOREIGN KEY(apartment_id) REFERENCES apartments(apartment_id) ON DELETE CASCADE)");
+
+            // BARANGAYS TABLE
+            stmt.execute("CREATE TABLE IF NOT EXISTS barangays ("
+                    + "barangay_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    + "name TEXT UNIQUE,"
+                    + "nearby_1 TEXT,"
+                    + "nearby_2 TEXT,"
+                    + "nearby_3 TEXT)");
+            
+            // BILLS HISTORY TABLE 
+            stmt.execute("CREATE TABLE IF NOT EXISTS bills ("
+                    + "bill_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    + "tenant_id INTEGER, "
+                    + "apartment_id INTEGER, "
+                    + "month TEXT, "
+                    + "rent REAL DEFAULT 0.0, "
+                    + "electricity REAL DEFAULT 0.0, "
+                    + "water REAL DEFAULT 0.0, "
+                    + "internet REAL DEFAULT 0.0, "
+                    + "tax REAL DEFAULT 0.0, "
+                    + "penalty REAL DEFAULT 0.0, "
+                    + "total REAL DEFAULT 0.0, "
+                    + "due_date TEXT, "
+                    + "paid INTEGER DEFAULT 0, "
+                    + "amount_paid REAL DEFAULT 0.0, "
+                    + "payment_date TEXT, "
+                    + "payment_method TEXT, "
+                    + "reference_number TEXT, "
+                    + "penalty_applied_at TEXT, "
+                    + "FOREIGN KEY(apartment_id) REFERENCES apartments(apartment_id), "
+                    + "FOREIGN KEY(tenant_id) REFERENCES registered_tenants(tenant_id))");
+            
+            // TENANT HISTORY TABLE
+            stmt.execute("CREATE TABLE IF NOT EXISTS tenant_history ("
+                    + "history_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    + "room_id INTEGER, "
+                    + "tenant_id INTEGER, "
+                    + "move_in_date TEXT, "
+                    + "move_out_date TEXT, "
+                    + "termination_reason TEXT, "
+                    + "FOREIGN KEY (room_id) REFERENCES rooms(room_id), "
+                    + "FOREIGN KEY (tenant_id) REFERENCES registered_tenants(tenant_id))");
+            
+            // COMPLAINTS TABLE
+            stmt.execute("CREATE TABLE IF NOT EXISTS complaints ("
+                    + "complaint_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    + "apartment_id INTEGER,"
+                    + "room_number TEXT,"
+                    + "message TEXT,"
+                    + "date_submitted TEXT)");
+
+            // ROOM BILLS TABLE 
+            stmt.execute("CREATE TABLE IF NOT EXISTS room_bills ("
+                    + "bill_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    + "apartment_id INTEGER,"
+                    + "room_number TEXT,"
+                    + "rent_amount REAL DEFAULT 0.0,"
+                    + "rent_due_date TEXT,"
+                    + "electricity_amount REAL DEFAULT 0.0,"
+                    + "electricity_due_date TEXT,"
+                    + "water_amount REAL DEFAULT 0.0,"
+                    + "water_due_date TEXT,"
+                    + "internet_amount REAL DEFAULT 0.0,"
+                    + "internet_due_date TEXT)");
+
+             // ANNOUNCEMENTS TABLE
+            stmt.execute("CREATE TABLE IF NOT EXISTS announcements ("
+                    + "announcement_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    + "apartment_id INTEGER,"
+                    + "title TEXT,"
+                    + "message TEXT,"
+                    + "date_posted TEXT)");
+
+            // PAYMENTS TABLE 
+            stmt.execute("CREATE TABLE IF NOT EXISTS payment_transactions ("
+                    + "transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,"
+                    + "apartment_id INTEGER,"
+                    + "tenant_id INTEGER,"
+                    + "room_number TEXT,"
+                    + "payment_method TEXT,"
+                    + "reference_no TEXT,"
+                    + "date_paid TEXT,"
+                    + "status TEXT DEFAULT 'PENDING')");
+
+            // EXPENSES TABLE (THIS WAS MISSING!)
+            stmt.execute("CREATE TABLE IF NOT EXISTS expenses ("
+                    + "expense_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    + "apartment_id INTEGER, "
+                    + "room_number TEXT, "
+                    + "expense_category TEXT, "
+                    + "amount REAL DEFAULT 0.0, "
+                    + "expense_date TEXT, "
+                    + "month TEXT, "
+                    + "description TEXT, "
+                    + "FOREIGN KEY(apartment_id) REFERENCES apartments(apartment_id))");
 
             // FULL BARANGAY SEEDING LIST
             String[] bQueries = {
@@ -209,82 +278,6 @@ public class DatabaseSetup {
                 "INSERT OR IGNORE INTO barangays VALUES (NULL,'Zapatera','Sambag 2','Cogon Ramos','Sambag 1')"
             };
             
-            // BILLS HISTORY TABLE (NO DAO huwat pas bill ni lary)
-            stmt.execute("CREATE TABLE IF NOT EXISTS bills ("
-                    + "bill_id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                    + "room_id INTEGER, "
-                    + "tenant_id INTEGER, "
-                    + "rent_amount REAL, "
-                    + "electricity_bill REAL, "
-                    + "water_bill REAL, "
-                    + "wifi_bill REAL, "
-                    + "total_amount REAL, "
-                    + "billing_month TEXT, " // Format: 'YYYY-MM'
-                    + "status TEXT DEFAULT 'UNPAID', " // UNPAID, PAID, OVERDUE
-                    + "date_created TEXT, "
-                    + "date_paid TEXT, "
-                    + "FOREIGN KEY (room_id) REFERENCES rooms(room_id), "
-                    + "FOREIGN KEY (tenant_id) REFERENCES registered_tenants(tenant_id))");
-            
-            // TENANT HISTORY TABLE
-            stmt.execute("CREATE TABLE IF NOT EXISTS tenant_history ("
-                    + "history_id INTEGER PRIMARY KEY AUTOINCREMENT, "
-                    + "room_id INTEGER, "
-                    + "tenant_id INTEGER, "
-                    + "move_in_date TEXT, "
-                    + "move_out_date TEXT, "
-                    + "termination_reason TEXT, "
-                    + "FOREIGN KEY (room_id) REFERENCES rooms(room_id), "
-                    + "FOREIGN KEY (tenant_id) REFERENCES registered_tenants(tenant_id))");
-            
-            // 1. TABLE FOR COMPLAINTS (Matches Dashboard "Complaints & Suggestions" tab)
-            stmt.execute("CREATE TABLE IF NOT EXISTS complaints ("
-                    + "complaint_id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                    + "apartment_id INTEGER,"
-                    + "room_number TEXT,"
-                    + "message TEXT,"
-                    + "date_submitted TEXT)");
-
-            // 2. TABLE FOR MAINTENANCE / TO-DO's (Matches "To Do's" tab)
-            stmt.execute("CREATE TABLE IF NOT EXISTS maintenance_requests ("
-                    + "request_id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                    + "apartment_id INTEGER,"
-                    + "room_number TEXT,"
-                    + "issue TEXT,"
-                    + "status TEXT DEFAULT 'PENDING')"); // PENDING or COMPLETED
-
-            // 3. TABLE FOR ROOM BILLS (Matches the "Rooms" and "Expenses" tabs)
-            stmt.execute("CREATE TABLE IF NOT EXISTS room_bills ("
-                    + "bill_id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                    + "apartment_id INTEGER,"
-                    + "room_number TEXT,"
-                    + "rent_amount REAL DEFAULT 0.0,"
-                    + "rent_due_date TEXT,"
-                    + "electricity_amount REAL DEFAULT 0.0,"
-                    + "electricity_due_date TEXT,"
-                    + "water_amount REAL DEFAULT 0.0,"
-                    + "water_due_date TEXT,"
-                    + "internet_amount REAL DEFAULT 0.0,"
-                    + "internet_due_date TEXT)");
-
-             // 4. TABLE FOR ANNOUNCEMENTS (Matches Tenant "Notification" tab)
-            stmt.execute("CREATE TABLE IF NOT EXISTS announcements ("
-                    + "announcement_id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                    + "apartment_id INTEGER,"
-                    + "title TEXT,"
-                    + "message TEXT,"
-                    + "date_posted TEXT)");
-
-            // 5. TABLE FOR PAYMENTS (Matches Tenant "Expenses/Payments" transaction form)
-            stmt.execute("CREATE TABLE IF NOT EXISTS payment_transactions ("
-                    + "transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,"
-                    + "apartment_id INTEGER,"
-                    + "tenant_id INTEGER,"
-                    + "room_number TEXT,"
-                    + "payment_method TEXT,"
-                    + "reference_no TEXT,"
-                    + "date_paid TEXT,"
-                    + "status TEXT DEFAULT 'PENDING')");
             for (String q : bQueries) {
                 stmt.execute(q);
             }

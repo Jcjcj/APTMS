@@ -10,33 +10,36 @@ public class ApartmentSytem1 {
 
         System.out.println("--- Starting System Initialization ---");
         
-        // 1. Wipe the old database clean (including the new tables)
+        // 1. Wipe the old database clean
         System.out.println("1. Clearing old tables...");
         clearAllTables();
         
-        // 2. Build the fresh tables with all the new columns we added today
+        // 2. Build the fresh tables
         System.out.println("2. Building new tables...");
         DatabaseSetup.createTables();
 
-       // 3. FIXED: Call the menu-based method in the Seeder
-        DataBaseSeeder.runFullSystemTest();
-        
-        // ---> YOU CAN LAUNCH YOUR FIRST UI SCREEN (LOGIN MENU) HERE <---
+        // 3. AUTOMATICALLY INJECT ALL MOCK DATA
+        DataBaseSeeder.seedMassiveData();
+
+        // 4. Launch your UI (Replace this line with your actual UI launch code later)
+        // new LoginUI().setVisible(true); 
     }
 
     /**
-     * Wipes all tables clean. 
-     * UPDATED to include the new tables: payment_transactions, announcements, complaints, and room_bills.
+     * Wipes all tables clean so the seeder can start fresh without duplicate errors.
      */
     private static void clearAllTables() {
         String[] tables = {
                 "payment_transactions", "announcements", "complaints", "room_bills", 
-                "maintenance_requests", "viewing_schedule", "room_occupancy",
-                "rooms", "apartments", "registered_tenants", "owners", "barangays", "super_admins"
+                "maintenance_requests", "viewing_schedule", "room_occupancy", "expenses",
+                "bills", "tenant_history", "rooms", "apartments", "registered_tenants", 
+                "owners", "barangays", "super_admins"
         };
+        
         try (Connection conn = DBConnection.connect();
              Statement stmt = conn.createStatement()) {
             
+            // Turn off foreign keys temporarily so we can delete tables in any order
             stmt.execute("PRAGMA foreign_keys = OFF;");
             
             for (String t : tables) {
@@ -47,6 +50,7 @@ public class ApartmentSytem1 {
                 }
             }
             
+            // Turn foreign keys back on
             stmt.execute("PRAGMA foreign_keys = ON;");
             
         } catch (Exception e) {
