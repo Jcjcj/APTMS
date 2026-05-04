@@ -153,4 +153,53 @@ public class OwnerDAO {
         
         return activeTenants;
     }
+    
+    // NEW: Allows an owner to change their password
+    public boolean changePassword(int ownerId, String newRawPassword) {
+        // Always hash the new password before saving it!
+        String hashedNewPassword = PasswordUtil.hashPassword(newRawPassword);
+        
+        String sql = "UPDATE owners SET password = ? WHERE owner_id = ?";
+        
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setString(1, hashedNewPassword);
+            ps.setInt(2, ownerId);
+            
+            int rowsUpdated = ps.executeUpdate();
+            return rowsUpdated > 0;
+            
+        } catch (Exception e) {
+            // Optional: LOGGER.severe("Owner Password Update Error: " + e.getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Authenticates an owner for the main login screen.
+     * Returns the owner_id if successful, or -1 if login fails.
+     */
+    public int authenticateOwner(String username, String rawPassword) {
+        String hashedInput = PasswordUtil.hashPassword(rawPassword);
+        
+        String sql = "SELECT owner_id FROM owners WHERE username = ? AND password = ?";
+        
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            
+            ps.setString(1, username);
+            ps.setString(2, hashedInput);
+            
+            ResultSet rs = ps.executeQuery();
+            
+            if (rs.next()) {
+                return rs.getInt("owner_id"); // Login success!
+            }
+        } catch (Exception e) {
+            System.out.println("Owner Login Error: " + e.getMessage());
+        }
+        return -1; // Login failed
+    }
+    
 }

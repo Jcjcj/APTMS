@@ -9,29 +9,28 @@ import java.util.logging.Logger;
 public class ViewingScheduleDAO {
     private static final Logger LOGGER = Logger.getLogger(ViewingScheduleDAO.class.getName());
 
-    // 1. Tenant schedules a viewing and receives a Temporary Account
-    public String[] scheduleViewing(int apartmentId, String tenantName, String contact, String date, String startTime, String endTime) {
+ 
+    // MODIFIED FOR UI PAGE 4: Now requires roomNumber and a single specific viewing time
+    public String[] scheduleViewing(int apartmentId, String roomNumber, String tenantName, String contact, String date, String time) {
         String tempUser = "view_" + UUID.randomUUID().toString().substring(0, 5);
         String tempPass = UUID.randomUUID().toString().substring(0, 6);
 
-        String sql = "INSERT INTO viewing_schedule(apartment_id, tenant_name, contact_number, schedule_date, start_time, end_time, status, temp_username, temp_password) " +
+        String sql = "INSERT INTO viewing_schedule(apartment_id, room_number, tenant_name, contact_number, schedule_date, viewing_time, status, temp_username, temp_password) " +
                      "VALUES(?,?,?,?,?,?,'PENDING',?,?)";
         
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             
             ps.setInt(1, apartmentId);
-            ps.setString(2, tenantName);
-            ps.setString(3, contact);
-            ps.setString(4, date);
-            ps.setString(5, startTime);
-            ps.setString(6, endTime);
+            ps.setString(2, roomNumber);
+            ps.setString(3, tenantName);
+            ps.setString(4, contact);
+            ps.setString(5, date);
+            ps.setString(6, time);
             ps.setString(7, tempUser);
             ps.setString(8, PasswordUtil.hashPassword(tempPass)); 
             
             ps.executeUpdate();
-            LOGGER.info("Viewing Scheduled. Temp Account Created: " + tempUser);
-            
             return new String[]{tempUser, tempPass}; 
             
         } catch (Exception e) {
@@ -40,25 +39,39 @@ public class ViewingScheduleDAO {
         }
     }
 
-    // 2. Temp Account Login to check Status
-    public String checkViewingStatus(String tempUsername, String rawPassword) {
-        String sql = "SELECT temp_password, status FROM viewing_schedule WHERE temp_username = ?";
+    // MODIFIED FOR UI PAGE 5: Returns all Dashboard Text data instead of just status
+    public String[] getTempUserDashboard(String tempUsername, String rawPassword) {
+        String sql = "SELECT v.temp_password, v.tenant_name, v.room_number, a.apartment_name, a.apartment_address, v.schedule_date, v.viewing_time, v.status " +
+                     "FROM viewing_schedule v " +
+                     "JOIN apartments a ON v.apartment_id = a.apartment_id " +
+                     "WHERE v.temp_username = ?";
+                     
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
+            
             ps.setString(1, tempUsername);
             ResultSet rs = ps.executeQuery();
+            
             if (rs.next()) {
                 if (PasswordUtil.checkPassword(rawPassword, rs.getString("temp_password"))) {
-                    return rs.getString("status");
+                    // Returns an array containing UI fields: [Name, Room, Apt Name, Location, Date, Time, Status]
+                    return new String[] {
+                        rs.getString("tenant_name"),
+                        rs.getString("room_number"),
+                        rs.getString("apartment_name"),
+                        rs.getString("apartment_address"),
+                        rs.getString("schedule_date"),
+                        rs.getString("viewing_time"),
+                        rs.getString("status")
+                    };
                 }
-                return "INVALID_PASSWORD";
+                return new String[]{"INVALID_PASSWORD"};
             }
-            return "USER_NOT_FOUND";
+            return new String[]{"USER_NOT_FOUND"};
         } catch (Exception e) { 
-            return "ERROR"; 
+            return new String[]{"ERROR"}; 
         }
     }
-
     // 3. Owner Updates the Status from their dashboard
     public boolean updateScheduleStatus(int scheduleId, String newStatus) {
         String sql = "UPDATE viewing_schedule SET status = ? WHERE schedule_id = ?";
