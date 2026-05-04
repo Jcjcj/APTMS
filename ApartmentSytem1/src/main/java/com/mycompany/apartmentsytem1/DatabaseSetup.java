@@ -30,7 +30,7 @@ public class DatabaseSetup {
                     + "password TEXT,"
                     + "is_active INTEGER DEFAULT 1)");
 
-            // APARTMENTS TABLE
+            // APARTMENTS TABLE (UPDATED FOR NEW UTILITY COLUMNS & PENALTIES)
             stmt.execute("CREATE TABLE IF NOT EXISTS apartments ("
                     + "apartment_id INTEGER PRIMARY KEY AUTOINCREMENT,"
                     + "apartment_code TEXT UNIQUE,"
@@ -41,14 +41,19 @@ public class DatabaseSetup {
                     + "total_rooms INTEGER,"
                     + "rooms_available INTEGER,"
                     + "capital REAL," 
+                    + "tax_rate REAL DEFAULT 0.12," 
+                    + "penalty_rate REAL DEFAULT 0.05," // <--- ADDED THIS FATAL MISSING LINE
                     + "payment_method TEXT,"
                     + "description TEXT,"
                     + "policy TEXT,"
                     + "barangay TEXT,"
                     + "street TEXT,"
-                    + "electricity TEXT,"
-                    + "water TEXT,"
-                    + "internet TEXT,"
+                    + "electricity_type TEXT,"      
+                    + "elec_rate REAL DEFAULT 0.0," 
+                    + "water_type TEXT,"            
+                    + "water_rate REAL DEFAULT 0.0,"
+                    + "internet_type TEXT,"         
+                    + "internet_rate REAL DEFAULT 0.0," 
                     + "contact_number TEXT,"
                     + "email TEXT,"
                     + "social_media TEXT,"
@@ -75,6 +80,8 @@ public class DatabaseSetup {
                     + "water_type TEXT DEFAULT 'Meter',"
                     + "internet_type TEXT DEFAULT 'Plan',"
                     + "image_url TEXT DEFAULT 'default_room.png',"
+                    + "current_elec_reading REAL DEFAULT 0.0,"  // <-- FIXED: Added this
+                    + "current_water_reading REAL DEFAULT 0.0," // <-- FIXED: Added this
                     + "FOREIGN KEY(apartment_id) REFERENCES apartments(apartment_id) ON DELETE CASCADE)");
 
             // REGISTERED TENANTS TABLE 

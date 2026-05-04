@@ -49,10 +49,11 @@ public class FinanceService {
 
         report.totalRevenue = profitDao.getAnnualRevenue(apartmentId, year);
         
-        // CHANGED: Added the "%" wildcard before the year!
-        double bldgExp = expenseDao.getBuildingExpensesOnly(apartmentId, "%" + year); 
-        double roomExp = expenseDao.getRoomExpensesOnly(apartmentId, "%" + year);
-        report.totalExpenses = bldgExp + roomExp; 
+        // FIXED: Changed "%" + year TO year + "%"
+        // This ensures "2026%" matches "2026-01", "2026-05", etc.
+        double bldgExp = expenseDao.getBuildingExpensesOnly(apartmentId, year + "%"); 
+        double roomExp = expenseDao.getRoomExpensesOnly(apartmentId, year + "%");
+        report.totalExpenses = bldgExp + roomExp;
 
         report.grossProfit = report.totalRevenue - report.totalExpenses;
         report.capital = profitDao.getCapitalTotal(apartmentId);

@@ -38,8 +38,16 @@ public class DataBaseSeeder {
                 int ownerId = ((i-1) % 10) + 1; 
                 String aptName = lasts[i%10] + " " + aptSuffix[i%6] + " " + i;
                 String brgy = brgys[i%6];
-                stmt.addBatch("INSERT INTO apartments (apartment_name, owner_id, floors, total_rooms, rooms_available, capital, payment_method, barangay, electricity, water, internet, is_active, approval_status) " +
-                              "VALUES ('" + aptName + "', " + ownerId + ", 3, 10, 10, 500000, 'GCash', '" + brgy + "', 'Meter', 'Meter', 'Plan', 1, 'APPROVED')");
+                
+                // FIXED: Updated the INSERT statement to match our new database columns exactly
+                stmt.addBatch("INSERT INTO apartments (apartment_name, owner_id, floors, total_rooms, rooms_available, " +
+                              "capital, tax_rate, penalty_rate, payment_method, barangay, " +
+                              "electricity_type, elec_rate, water_type, water_rate, internet_type, internet_rate, " +
+                              "is_active, approval_status) " +
+                              "VALUES ('" + aptName + "', " + ownerId + ", 3, 10, 10, " +
+                              "500000, 0.12, 0.05, 'GCash', '" + brgy + "', " +
+                              "'METER', 15.0, 'METER', 35.0, 'POSTPAID', 1500.0, " +
+                              "1, 'APPROVED')");
             }
 
             // 4. ROOMS (200 Rooms - 10 per Apartment)
