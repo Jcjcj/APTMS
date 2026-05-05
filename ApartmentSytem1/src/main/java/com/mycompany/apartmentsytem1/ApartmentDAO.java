@@ -10,17 +10,17 @@ public class ApartmentDAO {
     private static final Logger LOGGER = Logger.getLogger(ApartmentDAO.class.getName());
 
      public boolean addApartment(String apartmentCode, String name, String tin, int floors, 
-                             List<Integer> roomsPerFloorList, 
-                             List<List<Double>> rentPricesPerFloor,
-                             List<List<Double>> downPaymentsPerFloor, 
-                             List<List<Double>> securityDepositsPerFloor, 
-                             double capital, double taxRate, double penaltyRate, String paymentMethod, String description, String policy,
-                             String barangay, String street, 
-                             String electricityType, double elecRate, 
-                             String waterType, double waterRate,      
-                             String internetType, double internetRate, 
-                             String contact, String email, String social, String emergency, String profileImage,
-                             int ownerId) {
+                                 List<Integer> roomsPerFloorList, 
+                                 List<List<Double>> rentPricesPerFloor,
+                                 List<List<Double>> downPaymentsPerFloor, 
+                                 List<List<Double>> securityDepositsPerFloor, 
+                                 double capital,double taxRate, String paymentMethod, String description, String policy,
+                                 String barangay, String street, 
+                                 String electricityType, double elecRate, // Added elecRate
+                                 String waterType, double waterRate,      // Added waterRate
+                                 String internetType, double internetRate, // Added internetRate
+                                 String contact, String email, String social, String emergency, String profileImage,
+                                 int ownerId) {
 
         if (name == null || name.trim().isEmpty() || capital < 0) {
             LOGGER.warning("Validation Failed: Invalid apartment data.");

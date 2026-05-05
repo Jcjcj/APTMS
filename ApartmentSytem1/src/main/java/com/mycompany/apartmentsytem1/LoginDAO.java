@@ -22,20 +22,14 @@ public class LoginDAO {
     }
 
     public String loginTenant(String username, String password) {
-        // We added tenant_id to the SELECT query
-        String sql = "SELECT tenant_id, password, approval_status FROM registered_tenants WHERE username=?";
+        String sql = "SELECT password, approval_status FROM registered_tenants WHERE username=?";
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, username);
             ResultSet rs = ps.executeQuery();
             if (rs.next()) {
                 if (PasswordUtil.checkPassword(password, rs.getString("password"))) {
-                    if (rs.getString("approval_status").equals("APPROVED")) {
-                        // Return SUCCESS + the actual ID (e.g., "SUCCESS:5")
-                        return "SUCCESS:" + rs.getInt("tenant_id"); 
-                    } else {
-                        return "Your registration is " + rs.getString("approval_status");
-                    }
+                    return rs.getString("approval_status").equals("APPROVED") ? "SUCCESS" : "Your registration is " + rs.getString("approval_status");
                 }
                 return "Invalid password.";
             }

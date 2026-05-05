@@ -64,44 +64,35 @@ public class ViewingDAO {
     /**
      * Authenticates a temporary user and retrieves all the data needed for their Dashboard.
      */
-    /**
-     * Authenticates a temporary user and retrieves all the data needed for their Dashboard.
-     */
-    /**
-     * Authenticates a temporary user and retrieves all the data needed for their Dashboard.
-     */
     public String[] getTemporaryUserDashboard(String tempUsername, String rawTempPassword) {
         
-        // FIX: Replaced 'a.apartment_address' with 'a.street, a.barangay'
-        String sql = "SELECT v.temp_password, v.room_number, a.apartment_name, a.street, a.barangay, " +
+        String hashedInputPassword = PasswordUtil.hashPassword(rawTempPassword);
+
+        String sql = "SELECT v.room_number, a.apartment_name, a.apartment_address, " +
                      "v.schedule_date, v.viewing_time, v.status, v.tenant_name " +
                      "FROM viewing_schedule v " +
                      "JOIN apartments a ON v.apartment_id = a.apartment_id " +
-                     "WHERE v.temp_username = ?";
+                     "WHERE v.temp_username = ? AND v.temp_password = ?";
 
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
 
             ps.setString(1, tempUsername);
+            ps.setString(2, hashedInputPassword);
+
+            // The error is gone because we imported java.sql.* at the top!
             ResultSet rs = ps.executeQuery();
 
             if (rs.next()) {
-                String storedHash = rs.getString("temp_password");
-                
-                if (PasswordUtil.checkPassword(rawTempPassword, storedHash)) {
-                    // Combine street and barangay into a single address string for the UI
-                    String fullAddress = rs.getString("street") + ", " + rs.getString("barangay");
-                    
-                    return new String[] {
-                        rs.getString("room_number"),       
-                        rs.getString("apartment_name"),    
-                        fullAddress,                       // <-- Send the combined address here
-                        rs.getString("schedule_date"),     
-                        rs.getString("viewing_time"),      
-                        rs.getString("status"),            
-                        rs.getString("tenant_name")        
-                    };
-                }
+                return new String[] {
+                    rs.getString("room_number"),       
+                    rs.getString("apartment_name"),    
+                    rs.getString("apartment_address"), 
+                    rs.getString("schedule_date"),     
+                    rs.getString("viewing_time"),      
+                    rs.getString("status"),            
+                    rs.getString("tenant_name")        
+                };
             }
             
         } catch (Exception e) {
