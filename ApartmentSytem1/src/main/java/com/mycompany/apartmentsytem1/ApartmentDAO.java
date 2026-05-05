@@ -86,6 +86,10 @@ public class ApartmentDAO {
                 generateCustomRooms(conn, newId, roomsPerFloorList, rentPricesPerFloor, downPaymentsPerFloor, securityDepositsPerFloor, roomImagesPerFloor);
             }
             LOGGER.info(() -> "Registered Apartment: " + name);
+            
+            // Trigger the notification to all 6 Super Admins
+            NotificationDAO notificationEngine = new NotificationDAO();
+            notificationEngine.notifySuperAdminsNewRegistration(name);
             return true;
             
         } catch (Exception e) {

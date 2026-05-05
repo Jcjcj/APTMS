@@ -237,6 +237,16 @@ public class DatabaseSetup {
                     + "description TEXT, "
                     + "FOREIGN KEY(apartment_id) REFERENCES apartments(apartment_id))");
 
+            // Create a table for personal tenant and owner notifications
+            stmt.execute("CREATE TABLE IF NOT EXISTS notifications ("
+                    + "notification_id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                      + "target_username TEXT, " // The specific tenant or owner who gets the message
+                      + "title TEXT, "
+                      + "message TEXT, "
+                      + "is_read INTEGER DEFAULT 0, " // 0 for unread, 1 for read
+                      + "date_created DATE DEFAULT CURRENT_DATE"
+                      + ")");
+            
             // FULL BARANGAY SEEDING LIST
             String[] bQueries = {
                 "INSERT OR IGNORE INTO barangays VALUES (NULL,'Adlaon','Pit-os','Binaliw','Agus')",
