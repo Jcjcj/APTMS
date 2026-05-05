@@ -50,6 +50,9 @@ public class SignUp extends JFrame implements ActionListener {
     JButton submitButton, tenantSubmitButton, btnAddRoom;
     JPanel mainPanel;
     
+    private File tempRoomImageFile; // Temporarily holds the chosen room image
+    private List<String> pendingRoomImages = new ArrayList<>(); // Stores images for the list
+    
     private File[] apartmentVisuals; 
     private File profilePicture;
     private File validIdFile;
@@ -228,6 +231,10 @@ public class SignUp extends JFrame implements ActionListener {
                 List<List<Double>> rentPrices = new ArrayList<>();
                 List<List<Double>> downPayments = new ArrayList<>();
                 List<List<Double>> secDeposits = new ArrayList<>();
+                
+                // --- ADDED THIS: Packaging the Room Images List ---
+                List<List<String>> roomImagesPerFloor = new ArrayList<>();
+                roomImagesPerFloor.add(pendingRoomImages); // Assuming all added rooms belong to the same flow for now
 
                 double rent = txtRoomRent.getText().trim().isEmpty() ? 0.0 : Double.parseDouble(txtRoomRent.getText().trim().replace(",", ""));
                 double dp = txtRoomDP.getText().trim().isEmpty() ? 0.0 : Double.parseDouble(txtRoomDP.getText().trim().replace(",", ""));
@@ -261,10 +268,10 @@ public class SignUp extends JFrame implements ActionListener {
                     if (!pRateText.isEmpty()) penaltyRateVal = Double.parseDouble(pRateText) / 100.0;
                 } catch (Exception ex) { penaltyRateVal = 0.05; }
 
-                // The synchronized call with exactly 28 parameters
+                // --- ADDED THIS: Passing the roomImagesPerFloor array to addApartment ---
                 boolean isAptRegistered = aptDAO.addApartment(
                     null, aptName, tinNo, floors, 
-                    roomsPerFloor, rentPrices, downPayments, secDeposits, 
+                    roomsPerFloor, rentPrices, downPayments, secDeposits, roomImagesPerFloor, 
                     capital, 0.02, penaltyRateVal, paymentMethod.toString(), description, policy, 
                     barangay, street, 
                     elecType, elecRate, waterType, waterRate, netType, netRate, 
@@ -314,6 +321,14 @@ public class SignUp extends JFrame implements ActionListener {
             String rFloor = txtRoomFloor.getText().trim();
             if(!rNum.isEmpty() && !rFloor.isEmpty()) {
                 roomListModel.addElement("Room " + rNum + " - " + rFloor + "F");
+                
+                // --- ADDED THIS: Saving the image and adding to the pending list ---
+                String savedRoomImagePath = (tempRoomImageFile != null) 
+                        ? com.mycompany.apartmentsytem1.FileStorageUtil.saveImage(tempRoomImageFile) 
+                        : "default_room.png";
+                pendingRoomImages.add(savedRoomImagePath);
+                tempRoomImageFile = null; // Reset for the next room!
+                
                 txtRoomNum.setText("");
                 txtRoomFloor.setText("");
             } else {
@@ -555,6 +570,18 @@ public class SignUp extends JFrame implements ActionListener {
 
         JPanel pnlRoomAction = new JPanel(new GridLayout(1, 2, 10, 0)); pnlRoomAction.setOpaque(false);
         JButton btnRoomImg = new JButton("+"); btnRoomImg.setBackground(Color.WHITE); btnRoomImg.setFont(new Font("Arial", Font.BOLD, 20)); btnRoomImg.setFocusable(false);
+        
+        // --- ADDED THIS: The File Chooser for the Room Image Button ---
+        btnRoomImg.addActionListener(e -> {
+            JFileChooser chooser = new JFileChooser();
+            chooser.setFileFilter(new FileNameExtensionFilter("Image Files", "jpg", "png", "jpeg"));
+            if(chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+                tempRoomImageFile = chooser.getSelectedFile();
+                btnRoomImg.setText("Uploaded");
+                btnRoomImg.setBackground(new Color(200, 255, 200));
+            }
+        });
+        
         pnlRoomAction.add(createInputBlock("Room Image", btnRoomImg));
         
         btnAddRoom = new JButton("ADD ROOM");
