@@ -68,7 +68,7 @@ public class SuperAdminDashboard extends JFrame implements ActionListener {
         JPanel logoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 20));
         logoPanel.setBackground(COLOR_SIDEBAR);
         
-        URL logoUrl = getClass().getResource("/main/logowhite.png");
+        URL logoUrl = getClass().getResource("/logowhite.png");
         JLabel logoLabel = new JLabel();
         logoLabel.setForeground(COLOR_TEXT);
         if (logoUrl != null) {

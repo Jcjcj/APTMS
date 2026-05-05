@@ -125,7 +125,7 @@ public class SignUp extends JFrame implements ActionListener {
         headerPanel.setBackground(new Color(0, 102, 51));
         headerPanel.setPreferredSize(new Dimension(Toolkit.getDefaultToolkit().getScreenSize().width, 120));
     
-        URL logoUrl = getClass().getResource("/main/logowhite.png");
+        URL logoUrl = getClass().getResource("/logowhite.png");
         JLabel logoLabel = new JLabel();
         if (logoUrl != null) {
             ImageIcon logoIcon = new ImageIcon(logoUrl);

@@ -34,7 +34,7 @@ public class SearchWindow extends JFrame {
 
         JPanel logoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
         logoPanel.setOpaque(false);
-        URL logoUrl = getClass().getResource("/main/logowhite.png");
+        URL logoUrl = getClass().getResource("/logowhite.png");
         JLabel logoLabel = new JLabel("<html>Apartment<br>Management<br>System</html>");
         logoLabel.setFont(new Font("Segoe UI", Font.BOLD, 20));
         logoLabel.setForeground(COLOR_TEXT);

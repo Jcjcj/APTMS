@@ -101,14 +101,14 @@ public class LandingPage extends JFrame {
         imgLabel.setVerticalAlignment(JLabel.BOTTOM);
         
         // Inside LandingPage constructor
-        URL bgUrl = getClass().getResource("/main/Background.png");
+        URL bgUrl = getClass().getResource("/Background.png");
         if (bgUrl != null) {
             ImageIcon bgIcon = new ImageIcon(bgUrl);
             // Matches the scaled instance in your provided source[cite: 25, 26]
             Image scaledBg = bgIcon.getImage().getScaledInstance(800, 550, Image.SCALE_SMOOTH);
             imgLabel.setIcon(new ImageIcon(scaledBg));
         } else {
-            imgLabel.setText("MISSING: src/main/resources/main/Background.png");
+            imgLabel.setText("MISSING: /Background.png");
             imgLabel.setForeground(Color.RED);
         }
         imgLabel.setLayout(new BorderLayout());
@@ -171,14 +171,14 @@ public class LandingPage extends JFrame {
         headerPanel.setOpaque(false);
         JLabel logoLabel = new JLabel();
        // Inside LandingPage constructor
-        URL logoUrl = getClass().getResource("/main/logo.png"); 
+        URL logoUrl = getClass().getResource("/logo.png");
         if (logoUrl != null) {
             ImageIcon logoIcon = new ImageIcon(logoUrl);
             // Scale specifically for the login container
             Image scaledLogo = logoIcon.getImage().getScaledInstance(300, 300, Image.SCALE_SMOOTH);
             logoLabel.setIcon(new ImageIcon(scaledLogo));
         } else {
-            logoLabel.setText("MISSING: src/main/resources/main/logo.png");
+            logoLabel.setText("MISSING: /logo.png");
             logoLabel.setForeground(Color.RED);
         }
 
