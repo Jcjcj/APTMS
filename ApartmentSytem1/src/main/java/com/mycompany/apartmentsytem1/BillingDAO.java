@@ -169,7 +169,7 @@ public class BillingDAO {
     // =========================================================
     // EXISTING METHOD: PAY BILL (Untouched)
     // =========================================================
-    public boolean payBill(int billId, double paymentAmount, String paymentDate, String paymentMethod, String referenceNumber) {
+  public boolean payBill(int billId, double paymentAmount, String paymentDate, String paymentMethod, String referenceNumber) {
         String sql = "UPDATE bills SET amount_paid = amount_paid + ?, "
                    + "payment_date = ?, payment_method = ?, reference_number = ?, "
                    + "paid = CASE WHEN (amount_paid + ?) >= total THEN 1 ELSE 0 END "
@@ -185,13 +185,49 @@ public class BillingDAO {
             ps.setDouble(5, paymentAmount);
             ps.setInt(6, billId);
 
-            return ps.executeUpdate() > 0;
+            // 1. Capture the result instead of returning it immediately
+            int rowsAffected = ps.executeUpdate();
+
+            // 2. If the payment was successfully saved to the database, trigger the alert!
+            if (rowsAffected > 0) {
+                triggerPaymentNotification(billId, paymentAmount); 
+                return true;
+            }
+
         } catch (Exception e) {
             System.out.println("Payment Error: " + e.getMessage());
         }
         return false;
     }
 
+    // 3. Add this helper method directly below payBill
+    private void triggerPaymentNotification(int billId, double amountPaid) {
+        // Look up the missing details (tenant name, room, owner) using the billId
+        String sql = "SELECT t.username, t.room_number, a.owner_username " +
+                     "FROM bills b " +
+                     "JOIN tenants t ON b.room_number = t.room_number AND b.apartment_id = t.apartment_id " +
+                     "JOIN apartments a ON b.apartment_id = a.apartment_id " +
+                     "WHERE b.bill_id = ?";
+
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+             
+            ps.setInt(1, billId);
+            ResultSet rs = ps.executeQuery();
+            
+            if (rs.next()) {
+                String tenantName = rs.getString("username");
+                String roomNumber = rs.getString("room_number");
+                String ownerUsername = rs.getString("owner_username");
+                
+                // Send the alert to the owner!
+                NotificationDAO notificationEngine = new NotificationDAO();
+                notificationEngine.notifyOwnerTenantPaid(ownerUsername, tenantName, roomNumber, amountPaid);
+            }
+        } catch (Exception e) {
+            System.out.println("Notification Error: " + e.getMessage());
+        }
+    }
     // =========================================================
     // NEW IMPROVEMENT 1: ARREARS TRACKER (No Conflicts)
     // =========================================================
