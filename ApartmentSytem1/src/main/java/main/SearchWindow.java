@@ -120,7 +120,7 @@ public class SearchWindow extends JFrame {
         gridPanel.repaint();
     }
 
-    private JPanel createApartmentCard(ApartmentData apt) {
+    private JPanel createApartmentCard(final ApartmentData apt) {
         JPanel outerCard = new JPanel(new BorderLayout());
         outerCard.setOpaque(false);
 
@@ -186,31 +186,32 @@ public class SearchWindow extends JFrame {
         outerCard.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
             public void mouseClicked(java.awt.event.MouseEvent e) {
-                // Opens the new Room Details Window and passes the apartment data
-                new RoomDetailsWindow(apt).setVisible(true);
+                // Safely opens the Room Selection Window!
+                new RoomSelectionWindow(apt).setVisible(true);
             }
         });
         
         return outerCard;
     }
 
+    // 1. REPLACED: Added the 'public int id;' variable
     public static class ApartmentData {
-        String name, barangay, street, imageFileName;
-        int vacantRooms;
-        double rent;
+        public int id;
+        public String name, barangay, street, imageFileName;
+        public int vacantRooms;
+        public double rent;
 
-        public ApartmentData(String n, String b, String s, int v, double r, String img) {
-            this.name = n; this.barangay = b; this.street = s;
+        public ApartmentData(int id, String n, String b, String s, int v, double r, String img) {
+            this.id = id; this.name = n; this.barangay = b; this.street = s;
             this.vacantRooms = v; this.rent = r; this.imageFileName = img;
         }
     }
 
+    // 2. REPLACED: Now fetches a.apartment_id from the database
     private List<ApartmentData> fetchApartmentsFromDatabase(String barangay) {
         List<ApartmentData> list = new ArrayList<>();
         
-        // This query fetches real, approved apartments in the selected barangay
-        // It also finds the lowest available rent to display as the "starting from" price.
-        String sql = "SELECT a.apartment_name, a.barangay, a.street, a.rooms_available, a.profile_image, " +
+        String sql = "SELECT a.apartment_id, a.apartment_name, a.barangay, a.street, a.rooms_available, a.profile_image, " +
                      "MIN(r.rent_amount) as starting_rent " +
                      "FROM apartments a " +
                      "LEFT JOIN rooms r ON a.apartment_id = r.apartment_id AND r.status = 'Available' " +
@@ -224,6 +225,7 @@ public class SearchWindow extends JFrame {
             java.sql.ResultSet rs = ps.executeQuery();
             
             while (rs.next()) {
+                int id = rs.getInt("apartment_id"); // Got the ID!
                 String name = rs.getString("apartment_name");
                 String brgy = rs.getString("barangay");
                 String street = rs.getString("street");
@@ -231,21 +233,13 @@ public class SearchWindow extends JFrame {
                 double rent = rs.getDouble("starting_rent");
                 String img = rs.getString("profile_image");
                 
-                // If there are no available rooms with prices, default to 0.0
-                if (rs.wasNull()) {
-                    rent = 0.0;
-                }
-                if (img == null) {
-                    img = "";
-                }
+                if (rs.wasNull()) rent = 0.0;
+                if (img == null) img = "";
 
-                // Add the real apartment to the UI grid
-                list.add(new ApartmentData(name, brgy, street, vacant, rent, img));
+                // Passed the 'id' into the ApartmentData object
+                list.add(new ApartmentData(id, name, brgy, street, vacant, rent, img));
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        
+        } catch (Exception e) { e.printStackTrace(); }
         return list;
     }
     

@@ -299,4 +299,59 @@ public class SuperAdminDAO {
         // Return zeros if the apartment has no rooms registered yet
         return new double[] {0.0, 0.0, 0.0}; 
     }
+    
+    // 1. Fetches the detailed transaction list for the new UI
+    public List<String[]> getTransactionOverview() {
+        List<String[]> list = new ArrayList<>();
+        // We pull the apartment details and check if it's APPROVED (Paid) or SUSPENDED (Unpaid)
+        String sql = "SELECT a.apartment_id, a.apartment_name, o.name, o.contact_number, " +
+                     "a.total_rooms, COALESCE(a.next_billing_date, CURRENT_DATE) as b_date, " +
+                     "a.approval_status, a.tin_no, a.payment_method " +
+                     "FROM apartments a " +
+                     "JOIN owners o ON a.owner_id = o.owner_id " +
+                     "WHERE a.approval_status IN ('APPROVED', 'SUSPENDED')";
+                     
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            
+            while (rs.next()) {
+                list.add(new String[] {
+                    String.valueOf(rs.getInt("apartment_id")),
+                    rs.getString("apartment_name"),
+                    rs.getString("name"),
+                    rs.getString("contact_number"),
+                    String.valueOf(rs.getInt("total_rooms")),
+                    rs.getString("b_date"),
+                    rs.getString("approval_status"),
+                    rs.getString("tin_no"),
+                    rs.getString("payment_method")
+                });
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return list;
+    }
+
+    // 2. Toggles the PAID / UNPAID status
+    // Setting is_active = 0 automatically hides it from searches!
+    public boolean setApartmentPaymentStatus(int apartmentId, boolean isPaid) {
+        String status = isPaid ? "APPROVED" : "SUSPENDED";
+        int isActive = isPaid ? 1 : 0; 
+        
+        String sql = "UPDATE apartments SET approval_status = ?, is_active = ? WHERE apartment_id = ?";
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+             
+            ps.setString(1, status);
+            ps.setInt(2, isActive);
+            ps.setInt(3, apartmentId);
+            return ps.executeUpdate() > 0;
+            
+        } catch (Exception e) {
+            e.printStackTrace();
+            return false;
+        }
+    }
 }

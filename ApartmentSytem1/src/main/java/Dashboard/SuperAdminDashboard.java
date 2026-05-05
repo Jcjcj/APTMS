@@ -24,7 +24,7 @@ public class SuperAdminDashboard extends JFrame implements ActionListener {
     private CardLayout cardLayout;
     private JPanel cardsContainer;
     
-    private JButton btnDashboard, btnOwners, btnInquiries, btnBilling, btnNotification, btnLogout;
+    private JButton btnDashboard, btnOwners, btnInquiries, btnTransaction, btnNotification, btnLogout;
     private JButton[] navButtons;
     
     // --- DATABASE CONNECTION ---
@@ -49,7 +49,7 @@ public class SuperAdminDashboard extends JFrame implements ActionListener {
         cardsContainer.add(createDashboardCard(), "Dashboard");
         cardsContainer.add(createOwnersCard(), "Owners");
         cardsContainer.add(createInquiriesCard(), "Inquiries");
-        cardsContainer.add(createBillingCard(), "Billing");
+        cardsContainer.add(createTransactionCard(), "Transaction");
         cardsContainer.add(createNotificationCard(), "Notification");
 
         this.add(cardsContainer, BorderLayout.CENTER);
@@ -88,10 +88,10 @@ public class SuperAdminDashboard extends JFrame implements ActionListener {
         btnDashboard = createNavButton("Super Admin Dashboard");
         btnOwners = createNavButton("Apartment Owners");
         btnInquiries = createNavButton("Inquiries");
-        btnBilling = createNavButton("Billing");
+        btnTransaction = createNavButton("Billing");
         btnNotification = createNavButton("Notification");
 
-        navButtons = new JButton[]{btnDashboard, btnOwners, btnInquiries, btnBilling, btnNotification};
+        navButtons = new JButton[]{btnDashboard, btnOwners, btnInquiries, btnTransaction, btnNotification};
 
         for (JButton btn : navButtons) {
             navPanel.add(btn);
@@ -136,7 +136,7 @@ public class SuperAdminDashboard extends JFrame implements ActionListener {
         if (source == btnDashboard) { activateButton(btnDashboard); cardLayout.show(cardsContainer, "Dashboard"); } 
         else if (source == btnOwners) { activateButton(btnOwners); cardLayout.show(cardsContainer, "Owners"); } 
         else if (source == btnInquiries) { activateButton(btnInquiries); cardLayout.show(cardsContainer, "Inquiries"); } 
-        else if (source == btnBilling) { activateButton(btnBilling); cardLayout.show(cardsContainer, "Billing"); } 
+        else if (source == btnTransaction) { activateButton(btnTransaction); cardLayout.show(cardsContainer, "Transaction"); }
         else if (source == btnNotification) { activateButton(btnNotification); cardLayout.show(cardsContainer, "Notification"); }
     }
 
@@ -248,25 +248,37 @@ public class SuperAdminDashboard extends JFrame implements ActionListener {
         card.add(mainContent, BorderLayout.CENTER);
         return card;
     }
-
-    // 4. Billing (Overview from DB)
-    private JPanel createBillingCard() {
+    
+    private JPanel createTransactionCard() {
         JPanel card = new JPanel(new BorderLayout());
         card.setBackground(COLOR_MAIN_BG);
-        card.add(createHeader("Billing"), BorderLayout.NORTH);
+        card.add(createHeader("Transaction"), BorderLayout.NORTH);
 
         JPanel mainContent = new JPanel(new BorderLayout()); mainContent.setOpaque(false);
         mainContent.add(createSubHeader("Apartment Owners Status"), BorderLayout.NORTH);
 
         JPanel list = createContainerBox();
-        List<String[]> billingOverview = dao.getBillingOverview();
+        List<String[]> transactions = dao.getTransactionOverview();
 
-        if (billingOverview.isEmpty()) {
-            list.add(createEmptyLabel("No billing data available."));
+        if (transactions.isEmpty()) {
+            list.add(createEmptyLabel("No transaction data available."));
         } else {
-            for (String[] b : billingOverview) {
-                // b[0] = aptName, b[1] = ownerName, b[2] = contact
-                list.add(createListItem(b[0], b[1], b[2], createStatusLabel("Monthly")));
+            for (String[] t : transactions) {
+                int aptId = Integer.parseInt(t[0]);
+                String aptName = t[1];
+                String ownerName = t[2];
+                String contact = t[3];
+                String rooms = t[4];
+                String date = t[5];
+                String status = t[6].equals("APPROVED") ? "PAID" : "UNPAID";
+                String tin = t[7];
+                String method = t[8];
+                
+                // Fetch live 2% fee from backend
+                double[] financials = dao.getFinancialProjections(aptId);
+                String formattedTotal = String.format("%,.2f", financials[1]);
+
+                list.add(createTransactionListItem(aptId, aptName, ownerName, contact, rooms, date, formattedTotal, status, tin, method));
             }
         }
 
@@ -274,6 +286,106 @@ public class SuperAdminDashboard extends JFrame implements ActionListener {
         mainContent.add(scroll, BorderLayout.CENTER);
         card.add(mainContent, BorderLayout.CENTER);
         return card;
+    }
+
+    //4. Transaction
+    private JPanel createTransactionListItem(int aptId, String aptName, String ownerName, String contact, String rooms, String date, String total, String status, String tin, String method) {
+        JPanel panel = new JPanel(new BorderLayout());
+        panel.setBackground(COLOR_LIST_ITEM);
+        // Green outer border like your design
+        panel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(new Color(0, 153, 76), 3), 
+                BorderFactory.createEmptyBorder(15, 20, 15, 20)
+        ));
+
+        // --- LEFT SIDE: TEXT DETAILS ---
+        JPanel leftText = new JPanel(); leftText.setLayout(new BoxLayout(leftText, BoxLayout.Y_AXIS)); leftText.setOpaque(false);
+        
+        JLabel lblAptName = new JLabel(aptName); lblAptName.setFont(new Font("Segoe UI", Font.BOLD, 24)); lblAptName.setForeground(Color.WHITE); leftText.add(lblAptName);
+        JLabel lblOwner = new JLabel(ownerName); lblOwner.setFont(new Font("Segoe UI", Font.PLAIN, 14)); lblOwner.setForeground(Color.LIGHT_GRAY); leftText.add(lblOwner);
+        JLabel lblContact = new JLabel(contact); lblContact.setFont(new Font("Segoe UI", Font.PLAIN, 14)); lblContact.setForeground(Color.LIGHT_GRAY); leftText.add(lblContact);
+        
+        leftText.add(Box.createVerticalStrut(15));
+        JLabel lblRoomsDate = new JLabel(rooms + " Rooms Listed - " + date); lblRoomsDate.setFont(new Font("Segoe UI", Font.BOLD, 14)); lblRoomsDate.setForeground(Color.WHITE); leftText.add(lblRoomsDate);
+        JLabel lblTotal = new JLabel("Total: " + total); lblTotal.setFont(new Font("Segoe UI", Font.BOLD, 22)); lblTotal.setForeground(Color.WHITE); leftText.add(lblTotal);
+        panel.add(leftText, BorderLayout.WEST);
+
+        // --- RIGHT SIDE: BUTTONS & STATUS ---
+        JPanel rightPanel = new JPanel(new BorderLayout()); rightPanel.setOpaque(false);
+        
+        // Proof Button (Top Right)
+        JButton btnProof = createActionButton("PROOF OF TRANSACTION", new Color(0, 204, 102));
+        btnProof.setPreferredSize(new Dimension(220, 35));
+        btnProof.addActionListener(e -> showProofPopup(aptName, tin, method, date));
+        
+        JPanel pnlProof = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0)); pnlProof.setOpaque(false); pnlProof.add(btnProof);
+        rightPanel.add(pnlProof, BorderLayout.NORTH);
+
+        // Status & Action Buttons (Bottom Right)
+        JPanel bottomControls = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0)); bottomControls.setOpaque(false);
+        
+        JPanel pnlStatus = new JPanel(); pnlStatus.setLayout(new BoxLayout(pnlStatus, BoxLayout.Y_AXIS)); pnlStatus.setOpaque(false);
+        JLabel lblStatusText = new JLabel("STATUS"); lblStatusText.setFont(new Font("Segoe UI", Font.PLAIN, 12)); lblStatusText.setForeground(Color.LIGHT_GRAY); lblStatusText.setAlignmentX(Component.RIGHT_ALIGNMENT);
+        JLabel lblStatusValue = new JLabel(status); lblStatusValue.setFont(new Font("Segoe UI", Font.BOLD, 26)); lblStatusValue.setForeground(Color.WHITE); lblStatusValue.setAlignmentX(Component.RIGHT_ALIGNMENT);
+        pnlStatus.add(lblStatusText); pnlStatus.add(lblStatusValue);
+        bottomControls.add(pnlStatus);
+
+        JPanel pnlActionBtns = new JPanel(); pnlActionBtns.setLayout(new BoxLayout(pnlActionBtns, BoxLayout.Y_AXIS)); pnlActionBtns.setOpaque(false);
+        JButton btnPaid = createActionButton("PAID", new Color(0, 153, 204)); // Blue
+        btnPaid.setPreferredSize(new Dimension(100, 30));
+        btnPaid.addActionListener(e -> {
+            if (dao.setApartmentPaymentStatus(aptId, true)) { refreshDashboard(); }
+        });
+        
+        JButton btnUnpaid = createActionButton("UNPAID", new Color(204, 51, 51)); // Red
+        btnUnpaid.setPreferredSize(new Dimension(100, 30));
+        btnUnpaid.addActionListener(e -> {
+            if (dao.setApartmentPaymentStatus(aptId, false)) { refreshDashboard(); }
+        });
+
+        pnlActionBtns.add(btnPaid); pnlActionBtns.add(Box.createVerticalStrut(5)); pnlActionBtns.add(btnUnpaid);
+        bottomControls.add(pnlActionBtns);
+
+        rightPanel.add(bottomControls, BorderLayout.SOUTH);
+        panel.add(rightPanel, BorderLayout.EAST);
+
+        JPanel wrapper = new JPanel(new BorderLayout()); wrapper.setOpaque(false); wrapper.setBorder(BorderFactory.createEmptyBorder(0, 0, 15, 0)); 
+        wrapper.add(panel, BorderLayout.CENTER);
+        return wrapper;
+    }
+
+    // 3. The Popup Dialog for Proof of Transaction
+    private void showProofPopup(String aptName, String tin, String method, String date) {
+        JDialog dialog = new JDialog(this, true); dialog.setUndecorated(true); dialog.getContentPane().setBackground(COLOR_LIST_ITEM);
+        JPanel panel = new JPanel(); panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS)); panel.setOpaque(false); 
+        panel.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(COLOR_CONTAINER, 2), BorderFactory.createEmptyBorder(30, 40, 30, 40)));
+
+        JLabel lblTitle = new JLabel("Payment Verification"); lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 22)); lblTitle.setForeground(Color.WHITE); lblTitle.setAlignmentX(Component.CENTER_ALIGNMENT); panel.add(lblTitle);
+        panel.add(Box.createVerticalStrut(20));
+
+        panel.add(createPopupDetailRow("Apartment:", aptName));
+        panel.add(createPopupDetailRow("TIN Number:", tin != null ? tin : "Not Provided"));
+        panel.add(createPopupDetailRow("Payment Method:", method != null ? method : "Bank Transfer"));
+        panel.add(createPopupDetailRow("Transaction Date:", date));
+        
+        // Mock Reference Number generator for visual completeness
+        String ref = "REF-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        panel.add(createPopupDetailRow("Reference No.:", ref));
+
+        panel.add(Box.createVerticalStrut(30));
+        JButton btnClose = createActionButton("CLOSE", new Color(150, 150, 150)); btnClose.setAlignmentX(Component.CENTER_ALIGNMENT);
+        btnClose.addActionListener(e -> dialog.dispose());
+        panel.add(btnClose);
+
+        dialog.add(panel); dialog.pack(); dialog.setLocationRelativeTo(this); dialog.setVisible(true);
+    }
+
+    private JPanel createPopupDetailRow(String label, String value) {
+        JPanel row = new JPanel(new BorderLayout()); row.setOpaque(false); row.setMaximumSize(new Dimension(400, 30));
+        JLabel lbl = new JLabel(label); lbl.setForeground(Color.LIGHT_GRAY); lbl.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        JLabel val = new JLabel(value); val.setForeground(Color.WHITE); val.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        row.add(lbl, BorderLayout.WEST); row.add(val, BorderLayout.EAST);
+        return row;
     }
 
     // 5. Notification

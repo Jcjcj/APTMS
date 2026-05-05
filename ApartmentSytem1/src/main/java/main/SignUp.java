@@ -31,6 +31,7 @@ import javax.swing.JButton;
 import javax.swing.JCheckBox;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
+import javax.swing.JDialog;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -42,6 +43,8 @@ import javax.swing.JRadioButton;
 import javax.swing.JScrollPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
+import javax.swing.SwingConstants;
+import javax.swing.SwingUtilities;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.plaf.basic.BasicComboBoxUI;
 
@@ -50,8 +53,8 @@ public class SignUp extends JFrame implements ActionListener {
     JButton submitButton, tenantSubmitButton, btnAddRoom;
     JPanel mainPanel;
     
-    private File tempRoomImageFile; // Temporarily holds the chosen room image
-    private List<String> pendingRoomImages = new ArrayList<>(); // Stores images for the list
+    private File tempRoomImageFile; 
+    private List<String> pendingRoomImages = new ArrayList<>(); 
     
     private File[] apartmentVisuals; 
     private File profilePicture;
@@ -91,8 +94,8 @@ public class SignUp extends JFrame implements ActionListener {
     };
 
     private final String termsText = "Terms and Conditions: Platform Service Agreement\n\n" +
-            "1. The Platform Fee (Subscription)\n" +
-            "The 2% Rule: The Owner agrees to pay a 2% Platform Subscription Fee based on the total Gross Rent Pool of their apartment.\n" +
+            "1. The Platform Service Fee\n" +
+            "The 2% Rule: The Owner agrees to pay a 2% Platform Service Fee based on the total Gross Rent Pool of their apartment.\n" +
             "Basis of Calculation: The 2% fee is applied strictly to the Base Rent of each room.\n" +
             "Exclusions: The Superadmin shall not take any percentage from utility collections (Water, Electricity), Internet fees, or Late Penalties collected from tenants.\n" +
             "Automated Calculation: All fees are calculated at the database level to ensure mathematical accuracy and transparency.\n\n" +
@@ -103,7 +106,7 @@ public class SignUp extends JFrame implements ActionListener {
             "3. Financial Responsibilities\n" +
             "Revenue Reporting: The system provides the Owner with Gross Profit and Net Income analytics based on backend logic.\n" +
             "Tax Compliance: The Owner is responsible for their own income tax payments unless otherwise specified.\n" +
-            "System Maintenance: The 2% platform fee covers the cost of backend security and system updates.\n\n" +
+            "System Maintenance: The 2% platform service fee covers the cost of backend security and system updates.\n\n" +
             "4. Data Integrity and Usage\n" +
             "Accuracy: The Owner is responsible for the accuracy of room prices and occupancy data entered into the system.\n" +
             "Security: Access to the Superadmin Dashboard is strictly limited to authorized personnel.\n" +
@@ -113,7 +116,7 @@ public class SignUp extends JFrame implements ActionListener {
             "Process: The Owner must address the specific Rejection Reason provided by the Superadmin and resubmit the necessary documents or information.\n" +
             "Final Decision: After the 7-day window expires, the rejection becomes final, and the Owner must restart the entire registration process from the beginning.\n\n" +
             "Agreement Acknowledgment:\n" +
-            "By clicking \"Register Apartment,\" the Owner confirms they have read these terms and agree to the automatic 2% deduction from their rental revenue pool. This agreement is strictly governed by the backend architecture of the management system.";
+            "By clicking \"Register Apartment,\" the Owner confirms they have read these terms and agree to the 2% Platform Service Fee deduction from their rental revenue pool. This agreement is strictly governed by the backend architecture of the management system.";
     
     public SignUp(String userType) {
         this.setTitle(userType + " Registration");
@@ -165,15 +168,12 @@ public class SignUp extends JFrame implements ActionListener {
         // =========================================================
         if (e.getSource() == submitButton) {
             try {
-                // 1. Gather Owner Details
+                // 1. Gather Owner Details & Validate
                 String ownerName = txtOwnerName.getText().trim();
                 String ownerContact = txtOwnerContact.getText().trim();
                 String ownerEmail = txtOwnerEmail.getText().trim();
                 String ownerAddress = txtOwnerAddress.getText().trim();
                 String ownerEmergency = txtAptEmergency.getText().trim(); 
-                
-                // IMAGE STORAGE FIX: Save file locally and get the new unique filename
-                String validIdPath = (validIdFile != null) ? com.mycompany.apartmentsytem1.FileStorageUtil.saveImage(validIdFile) : "no_id.png";
                 
                 String username = txtUsername.getText().trim();
                 String password = new String(txtPassword.getPassword());
@@ -182,24 +182,33 @@ public class SignUp extends JFrame implements ActionListener {
                     JOptionPane.showMessageDialog(this, "Please fill in all required fields. Password must be at least 6 characters.", "Validation Error", JOptionPane.WARNING_MESSAGE);
                     return;
                 }
+                
+                // Fetch the values from the form to pre-fill the popup
+                String prefillTin = txtTin.getText().trim();
+                StringBuilder prefillMethod = new StringBuilder();
+                if(cbCash.isSelected()) prefillMethod.append("Cash ");
+                if(cbGCash.isSelected()) prefillMethod.append("GCash ");
+                if(cbMaya.isSelected()) prefillMethod.append("Maya");
 
-                // 2. Gather Apartment Details
+                // --- SHOW THE PAYMENT MODAL ---
+                String[] paymentData = showRegistrationPaymentPopup(prefillTin, prefillMethod.toString().trim());
+                if (paymentData == null) return; // User closed the popup, stop execution
+                
+                String finalTin = paymentData[0];
+                String finalMethod = paymentData[1] + " (Ref: " + paymentData[3] + ") - " + paymentData[2];
+
+                // --- CONTINUE WITH DATABASE INSERTION ---
+                String validIdPath = (validIdFile != null) ? com.mycompany.apartmentsytem1.FileStorageUtil.saveImage(validIdFile) : "no_id.png";
+
                 String aptName = txtAptName.getText().trim();
-                String tinNo = txtTin.getText().trim();
                 int floors = txtFloors.getText().trim().isEmpty() ? 1 : Integer.parseInt(txtFloors.getText().trim().replace(",", ""));
                 double capital = txtCapital.getText().trim().isEmpty() ? 0.0 : Double.parseDouble(txtCapital.getText().trim().replace(",", ""));
                 
-                StringBuilder paymentMethod = new StringBuilder();
-                if(cbCash.isSelected()) paymentMethod.append("Cash ");
-                if(cbGCash.isSelected()) paymentMethod.append("GCash ");
-                if(cbMaya.isSelected()) paymentMethod.append("Maya");
-
                 String description = areaDesc.getText().trim();
                 String policy = areaPolicy.getText().trim();
                 String barangay = cmbBarangay.getSelectedItem().toString();
                 String street = txtStreet.getText().trim();
                 
-                // Utilities
                 String elecType = eFixed.isSelected() ? "Fixed" : "Meter";
                 double elecRate = txtElecRate.getText().trim().isEmpty() ? 0.0 : Double.parseDouble(txtElecRate.getText().trim().replace(",", ""));
                 String waterType = wFixed.isSelected() ? "Fixed" : "Meter";
@@ -209,32 +218,22 @@ public class SignUp extends JFrame implements ActionListener {
 
                 String aptContact = txtAptContact.getText().trim();
                 String aptEmail = txtAptEmail.getText().trim();
-                String social = "";
                 String aptEmergency = txtAptEmergency.getText().trim();
                 
-                // IMAGE STORAGE FIX: Save profile image locally
                 String profileImgPath = (apartmentVisuals != null && apartmentVisuals.length > 0) ? com.mycompany.apartmentsytem1.FileStorageUtil.saveImage(apartmentVisuals[0]) : "default_apt.png";
 
-                // Penalty Rate Logic
-                double penaltyRate = 0.05; 
+                double penaltyRateVal = 0.05; 
                 try {
                     String pRateText = txtPenaltyRate.getText().trim().replace(",", "");
-                    if (!pRateText.isEmpty()) {
-                        penaltyRate = Double.parseDouble(pRateText) / 100.0;
-                    }
-                } catch (Exception ex) {
-                    penaltyRate = 0.05;
-                }
+                    if (!pRateText.isEmpty()) penaltyRateVal = Double.parseDouble(pRateText) / 100.0;
+                } catch (Exception ex) { penaltyRateVal = 0.05; }
 
-                // Process Rooms Data
                 List<Integer> roomsPerFloor = new ArrayList<>();
                 List<List<Double>> rentPrices = new ArrayList<>();
                 List<List<Double>> downPayments = new ArrayList<>();
                 List<List<Double>> secDeposits = new ArrayList<>();
-                
-                // --- ADDED THIS: Packaging the Room Images List ---
                 List<List<String>> roomImagesPerFloor = new ArrayList<>();
-                roomImagesPerFloor.add(pendingRoomImages); // Assuming all added rooms belong to the same flow for now
+                roomImagesPerFloor.add(pendingRoomImages); 
 
                 double rent = txtRoomRent.getText().trim().isEmpty() ? 0.0 : Double.parseDouble(txtRoomRent.getText().trim().replace(",", ""));
                 double dp = txtRoomDP.getText().trim().isEmpty() ? 0.0 : Double.parseDouble(txtRoomDP.getText().trim().replace(",", ""));
@@ -253,38 +252,28 @@ public class SignUp extends JFrame implements ActionListener {
                 downPayments.add(floorDPs);
                 secDeposits.add(floorSecs);
 
-                // 3. Execute Inserts
                 com.mycompany.apartmentsytem1.OwnerDAO ownerDAO = new com.mycompany.apartmentsytem1.OwnerDAO();
                 int newOwnerId = ownerDAO.registerOwner(ownerName, ownerContact, ownerEmail, ownerAddress, aptEmergency, validIdPath, username, password);
 
                 if (newOwnerId != -1) {
-                // Ensure the DAO is correctly referenced from its package
-                com.mycompany.apartmentsytem1.ApartmentDAO aptDAO = new com.mycompany.apartmentsytem1.ApartmentDAO();
+                    com.mycompany.apartmentsytem1.ApartmentDAO aptDAO = new com.mycompany.apartmentsytem1.ApartmentDAO();
                 
-                // Define the missing penaltyRate variable if not already defined above
-                double penaltyRateVal = 0.05; 
-                try {
-                    String pRateText = txtPenaltyRate.getText().trim().replace(",", "");
-                    if (!pRateText.isEmpty()) penaltyRateVal = Double.parseDouble(pRateText) / 100.0;
-                } catch (Exception ex) { penaltyRateVal = 0.05; }
-
-                // --- ADDED THIS: Passing the roomImagesPerFloor array to addApartment ---
-                boolean isAptRegistered = aptDAO.addApartment(
-                    null, aptName, tinNo, floors, 
-                    roomsPerFloor, rentPrices, downPayments, secDeposits, roomImagesPerFloor, 
-                    capital, 0.02, penaltyRateVal, paymentMethod.toString(), description, policy, 
-                    barangay, street, 
-                    elecType, elecRate, waterType, waterRate, netType, netRate, 
-                    aptContact, aptEmail, "", aptEmergency, profileImgPath, 
-                    newOwnerId
-                );
+                    boolean isAptRegistered = aptDAO.addApartment(
+                        null, aptName, finalTin, floors, 
+                        roomsPerFloor, rentPrices, downPayments, secDeposits, roomImagesPerFloor, 
+                        capital, 0.02, penaltyRateVal, finalMethod, description, policy, 
+                        barangay, street, 
+                        elecType, elecRate, waterType, waterRate, netType, netRate, 
+                        aptContact, aptEmail, "", aptEmergency, profileImgPath, 
+                        newOwnerId
+                    );
 
                     if (isAptRegistered) {
                         JOptionPane.showMessageDialog(this, "Registration Successful! Please wait for Super Admin approval.", "Success", JOptionPane.INFORMATION_MESSAGE);
                         this.dispose();
                         new LandingPage().setVisible(true); 
                     } else {
-                        JOptionPane.showMessageDialog(this, "Apartment Registration failed. Please check NetBeans console for details.", "Error", JOptionPane.ERROR_MESSAGE);
+                        JOptionPane.showMessageDialog(this, "Apartment Registration failed. Please check NetBeans console.", "Error", JOptionPane.ERROR_MESSAGE);
                     }
                 } else {
                     JOptionPane.showMessageDialog(this, "Owner Registration failed. Username might be taken.", "Error", JOptionPane.ERROR_MESSAGE);
@@ -306,7 +295,6 @@ public class SignUp extends JFrame implements ActionListener {
             String tUser = txtTenUser.getText().trim();
             String tPass = new String(txtTenPass.getPassword());
             
-            // IMAGE STORAGE FIX: Save tenant ID locally
             String tId = (validIdFile != null) ? com.mycompany.apartmentsytem1.FileStorageUtil.saveImage(validIdFile) : "no_id.png";
 
             com.mycompany.apartmentsytem1.TenantDAO tenantDAO = new com.mycompany.apartmentsytem1.TenantDAO();
@@ -322,12 +310,11 @@ public class SignUp extends JFrame implements ActionListener {
             if(!rNum.isEmpty() && !rFloor.isEmpty()) {
                 roomListModel.addElement("Room " + rNum + " - " + rFloor + "F");
                 
-                // --- ADDED THIS: Saving the image and adding to the pending list ---
                 String savedRoomImagePath = (tempRoomImageFile != null) 
                         ? com.mycompany.apartmentsytem1.FileStorageUtil.saveImage(tempRoomImageFile) 
                         : "default_room.png";
                 pendingRoomImages.add(savedRoomImagePath);
-                tempRoomImageFile = null; // Reset for the next room!
+                tempRoomImageFile = null; 
                 
                 txtRoomNum.setText("");
                 txtRoomFloor.setText("");
@@ -337,6 +324,136 @@ public class SignUp extends JFrame implements ActionListener {
         }
     }
 
+    // =========================================================================
+    // REGISTRATION PAYMENT POPUP (Image 2)
+    // =========================================================================
+    private String[] showRegistrationPaymentPopup(String prefillTin, String prefillMethod) {
+        JDialog dialog = new JDialog(this, true); 
+        dialog.setUndecorated(true); 
+        dialog.getContentPane().setBackground(new Color(5, 20, 10)); 
+        
+        JPanel panel = new JPanel(new BorderLayout(20, 20)); 
+        panel.setOpaque(false); 
+        panel.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(0, 102, 51), 2), 
+            BorderFactory.createEmptyBorder(30, 40, 30, 40)
+        ));
+
+        JLabel lblTitle = new JLabel("APARTMENT REGISTRATION PENDING", SwingConstants.CENTER); 
+        lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 22)); 
+        lblTitle.setForeground(Color.WHITE); 
+        panel.add(lblTitle, BorderLayout.NORTH);
+
+        JPanel innerGrid = new JPanel(new GridLayout(1, 2, 30, 0));
+        innerGrid.setOpaque(false);
+
+        // Left Side: Dummy Methods
+        JPanel pnlMethods = new JPanel(); pnlMethods.setLayout(new BoxLayout(pnlMethods, BoxLayout.Y_AXIS)); pnlMethods.setOpaque(false);
+        JLabel lblPayMethods = new JLabel("Payment Methods"); lblPayMethods.setFont(new Font("Segoe UI", Font.BOLD, 18)); lblPayMethods.setForeground(Color.WHITE); pnlMethods.add(lblPayMethods);
+        pnlMethods.add(Box.createVerticalStrut(20));
+        
+        pnlMethods.add(createPopupLabel("GCash", 16));
+        pnlMethods.add(createPopupLabel("0978 563 1928", 16));
+        pnlMethods.add(createPopupLabel("(Sara Duterte)", 16));
+        pnlMethods.add(Box.createVerticalStrut(20));
+        
+        pnlMethods.add(createPopupLabel("Paymaya", 16));
+        pnlMethods.add(createPopupLabel("0978 563 1928", 16));
+        pnlMethods.add(createPopupLabel("(Leni Robredo)", 16));
+        pnlMethods.add(Box.createVerticalStrut(30));
+        
+        JLabel lblNotice = new JLabel("<html>LOG IN to your account to view<br>the status of your registration.</html>");
+        lblNotice.setFont(new Font("Segoe UI", Font.PLAIN, 12)); lblNotice.setForeground(Color.LIGHT_GRAY);
+        pnlMethods.add(lblNotice);
+        innerGrid.add(pnlMethods);
+
+        // Right Side: Inputs
+        JPanel pnlInputs = new JPanel(); pnlInputs.setLayout(new BoxLayout(pnlInputs, BoxLayout.Y_AXIS)); pnlInputs.setOpaque(false);
+        
+        JTextField popTin = createDarkPopupField("TIN Number");
+        if (!prefillTin.isEmpty()) { popTin.setText(prefillTin); popTin.setForeground(Color.WHITE); }
+        
+        JTextField popMethod = createDarkPopupField("Payment Method Used");
+        if (!prefillMethod.isEmpty()) { popMethod.setText(prefillMethod); popMethod.setForeground(Color.WHITE); }
+        
+        JTextField popDate = createDarkPopupField("Date (YYYY-MM-DD)");
+        JTextField popRef = createDarkPopupField("Reference No.");
+        
+        pnlInputs.add(popTin); pnlInputs.add(Box.createVerticalStrut(10));
+        pnlInputs.add(popMethod); pnlInputs.add(Box.createVerticalStrut(10));
+        pnlInputs.add(popDate); pnlInputs.add(Box.createVerticalStrut(10));
+        pnlInputs.add(popRef); pnlInputs.add(Box.createVerticalStrut(20));
+        
+        JButton btnSubmitPop = new JButton("SUBMIT");
+        btnSubmitPop.setBackground(new Color(0, 204, 102)); btnSubmitPop.setForeground(Color.WHITE); btnSubmitPop.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        btnSubmitPop.setFocusPainted(false); btnSubmitPop.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnSubmitPop.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        
+        String[] result = new String[4]; // Holds the payment data to return to the main form
+        
+        btnSubmitPop.addActionListener(e -> {
+            result[0] = popTin.getText().equals("TIN Number") ? "" : popTin.getText();
+            result[1] = popMethod.getText().equals("Payment Method Used") ? "" : popMethod.getText();
+            result[2] = popDate.getText().equals("Date (YYYY-MM-DD)") ? "" : popDate.getText();
+            result[3] = popRef.getText().equals("Reference No.") ? "" : popRef.getText();
+            dialog.dispose();
+        });
+        
+        JButton btnCancelPop = new JButton("CANCEL");
+        btnCancelPop.setBackground(new Color(150, 50, 50)); btnCancelPop.setForeground(Color.WHITE); btnCancelPop.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        btnCancelPop.setFocusPainted(false); btnCancelPop.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnCancelPop.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        btnCancelPop.addActionListener(e -> dialog.dispose());
+
+        pnlInputs.add(btnSubmitPop);
+        pnlInputs.add(Box.createVerticalStrut(10));
+        pnlInputs.add(btnCancelPop);
+        
+        innerGrid.add(pnlInputs);
+        panel.add(innerGrid, BorderLayout.CENTER);
+        dialog.add(panel); 
+        dialog.pack(); 
+        dialog.setLocationRelativeTo(this); 
+        dialog.setVisible(true); // Blocks until the user clicks Submit or Cancel
+        
+        if (result[0] == null) return null; // Cancelled
+        return result;
+    }
+    
+    private JTextField createDarkPopupField(String placeholder) {
+        JTextField txt = new JTextField();
+        txt.setBackground(new Color(0, 35, 20)); 
+        txt.setForeground(Color.WHITE);
+        txt.setCaretColor(Color.WHITE);
+        txt.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(0, 35, 20)), 
+            BorderFactory.createEmptyBorder(10, 10, 10, 10)
+        ));
+        txt.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        txt.setText(placeholder);
+        txt.setHorizontalAlignment(JTextField.CENTER);
+        
+        txt.addFocusListener(new java.awt.event.FocusAdapter() {
+            public void focusGained(java.awt.event.FocusEvent evt) {
+                if (txt.getText().equals(placeholder)) { txt.setText(""); }
+            }
+            public void focusLost(java.awt.event.FocusEvent evt) {
+                if (txt.getText().isEmpty()) { txt.setText(placeholder); }
+            }
+        });
+        return txt;
+    }
+    
+    private JLabel createPopupLabel(String text, int size) {
+        JLabel l = new JLabel(text);
+        l.setForeground(Color.WHITE);
+        l.setFont(new Font("Segoe UI", Font.PLAIN, size));
+        return l;
+    }
+
+    // =========================================================================
+    // UI PANELS
+    // =========================================================================
     public JPanel ownerRegistration() {
         JPanel container = new JPanel(new BorderLayout());
         container.setOpaque(false);
@@ -425,7 +542,6 @@ public class SignUp extends JFrame implements ActionListener {
         JButton btnID = new JButton("+"); btnID.setBackground(Color.WHITE); btnID.setFont(new Font("Arial", Font.BOLD, 20)); btnID.setFocusable(false);
         JButton btnPhoto = new JButton("+"); btnPhoto.setBackground(Color.WHITE); btnPhoto.setFont(new Font("Arial", Font.BOLD, 20)); btnPhoto.setFocusable(false);
         
-        // ACTION LISTENERS FOR FILE UPLOAD
         btnID.addActionListener(e -> {
             JFileChooser chooser = new JFileChooser();
             chooser.setFileFilter(new FileNameExtensionFilter("Image Files", "jpg", "png", "jpeg"));
@@ -571,7 +687,6 @@ public class SignUp extends JFrame implements ActionListener {
         JPanel pnlRoomAction = new JPanel(new GridLayout(1, 2, 10, 0)); pnlRoomAction.setOpaque(false);
         JButton btnRoomImg = new JButton("+"); btnRoomImg.setBackground(Color.WHITE); btnRoomImg.setFont(new Font("Arial", Font.BOLD, 20)); btnRoomImg.setFocusable(false);
         
-        // --- ADDED THIS: The File Chooser for the Room Image Button ---
         btnRoomImg.addActionListener(e -> {
             JFileChooser chooser = new JFileChooser();
             chooser.setFileFilter(new FileNameExtensionFilter("Image Files", "jpg", "png", "jpeg"));
@@ -633,7 +748,7 @@ public class SignUp extends JFrame implements ActionListener {
 
         col4.add(Box.createVerticalGlue()); 
 
-        // --- NEW TERMS AND CONDITIONS SECTION ---
+        // --- TERMS AND CONDITIONS SECTION ---
         JPanel pnlTerms = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
         pnlTerms.setOpaque(false);
         pnlTerms.setAlignmentX(Component.RIGHT_ALIGNMENT);
@@ -649,7 +764,6 @@ public class SignUp extends JFrame implements ActionListener {
         btnTerms.setBorderPainted(false);
         btnTerms.setCursor(new Cursor(Cursor.HAND_CURSOR));
         
-        // Open Terms and Conditions Popup
         btnTerms.addActionListener(e -> {
             JTextArea textArea = new JTextArea(termsText);
             textArea.setEditable(false);
@@ -663,9 +777,7 @@ public class SignUp extends JFrame implements ActionListener {
 
             JOptionPane.showMessageDialog(this, scroll, "Platform Service Agreement", JOptionPane.INFORMATION_MESSAGE);
             
-            // --- UX FIX: Auto-check the box and enable the button after they read the terms! ---
             cbTerms.setSelected(true);
-            submitButton.setEnabled(true);
         });
 
         pnlTerms.add(cbTerms);
@@ -683,14 +795,12 @@ public class SignUp extends JFrame implements ActionListener {
         submitButton.setMaximumSize(new Dimension(120, 40));
         submitButton.setAlignmentX(Component.RIGHT_ALIGNMENT);
         submitButton.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        submitButton.setEnabled(false); // Disabled by default
+        submitButton.setEnabled(false); 
         submitButton.addActionListener(this); 
 
-        // --- UX FIX: Use ItemListener instead of ActionListener for checkboxes in Swing ---
         cbTerms.addItemListener(e -> submitButton.setEnabled(cbTerms.isSelected()));
         
         col4.add(submitButton);
-
         gridPanel.add(col4);
         
         container.add(gridPanel, BorderLayout.CENTER);
@@ -929,5 +1039,9 @@ public class SignUp extends JFrame implements ActionListener {
         container.add(buttonPanel, mainGbc);
 
         return container;
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new LandingPage().setVisible(true));
     }
 }

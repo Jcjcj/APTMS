@@ -161,4 +161,37 @@ public class ViewingDAO {
         
         return availableSlots; // Sends only the remaining free slots to the dropdown
     }
+    
+    public List<String> getBookedTimes(int apartmentId, String roomNumber, String date) {
+        List<String> bookedTimes = new ArrayList<>();
+            // FIX: Added "AND status != 'REJECTED'" so rejected times become available again!
+        String sql = "SELECT viewing_time FROM room_viewings WHERE apartment_id = ? AND room_number = ? AND viewing_date = ? AND status != 'REJECTED'";
+        
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, apartmentId);
+            ps.setString(2, roomNumber);
+            ps.setString(3, date);
+            ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                bookedTimes.add(rs.getString("viewing_time"));
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return bookedTimes;
+    }
+    
+       // NEW: Deletes the temporary viewing record once the tenant officially moves in
+    public void cleanupTemporaryAccount(int apartmentId, String tenantName) {
+        String sql = "DELETE FROM viewing_schedule WHERE apartment_id = ? AND tenant_name = ?";
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, apartmentId);
+            ps.setString(2, tenantName);
+            ps.executeUpdate();
+        } catch (Exception e) {
+            System.out.println("Cleanup Error: " + e.getMessage());
+        }
+    }
 }

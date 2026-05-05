@@ -189,26 +189,32 @@ public class OwnerDAO {
      * Authenticates an owner for the main login screen.
      * Returns the owner_id if successful, or -1 if login fails.
      */
+    /**
+     * Authenticates an owner for the main login screen.
+     * Returns the owner_id if successful, or -1 if login fails.
+     */
     public int authenticateOwner(String username, String rawPassword) {
-        String hashedInput = PasswordUtil.hashPassword(rawPassword);
-        
-        String sql = "SELECT owner_id FROM owners WHERE username = ? AND password = ?";
+        // We only search for the username, and grab the stored password hash and ID
+        String sql = "SELECT owner_id, password FROM owners WHERE username = ?";
         
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             
             ps.setString(1, username);
-            ps.setString(2, hashedInput);
-            
             ResultSet rs = ps.executeQuery();
             
             if (rs.next()) {
-                return rs.getInt("owner_id"); // Login success!
+                String storedHash = rs.getString("password");
+                
+                // Let PasswordUtil securely compare the raw text to the saved hash
+                if (PasswordUtil.checkPassword(rawPassword, storedHash)) {
+                    return rs.getInt("owner_id"); // Login success!
+                }
             }
         } catch (Exception e) {
             System.out.println("Owner Login Error: " + e.getMessage());
         }
-        return -1; // Login failed
+        return -1; // Login failed (either username not found, or password didn't match)
     }
     
     // NEW: Allows the owner to edit a tenant's basic details (The Pencil Icon)

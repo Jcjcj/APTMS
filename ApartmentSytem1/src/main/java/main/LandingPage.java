@@ -258,9 +258,35 @@ public class LandingPage extends JFrame {
             // CHECK 2: Owner
             OwnerDAO ownerDAO = new OwnerDAO();
             int ownerId = ownerDAO.authenticateOwner(user, pass);
+            
             if (ownerId != -1) {
-                this.dispose();
-                new Dashboard.OwnerDashboard(ownerId).setVisible(true); 
+                // Fetch their apartment status before letting them in!
+                com.mycompany.apartmentsytem1.ApartmentDAO aptDAO = new com.mycompany.apartmentsytem1.ApartmentDAO();
+                String[] statusData = aptDAO.getRegistrationStatusDashboard(ownerId);
+
+                if (statusData != null) {
+                    String approvalStatus = statusData[4]; // Index 4 holds the 'PENDING', 'APPROVED', or 'REJECTED' status
+                    
+                    if (approvalStatus.equals("APPROVED")) {
+                        // Success! Let them into the Dashboard
+                        this.dispose();
+                        new Dashboard.OwnerDashboard(ownerId).setVisible(true); 
+                    } else if (approvalStatus.equals("PENDING")) {
+                        // Stop them and show a polite message
+                        JOptionPane.showMessageDialog(this, 
+                            "Your apartment registration is still PENDING Super Admin approval. Please check back later.", 
+                            "Account Pending", 
+                            JOptionPane.INFORMATION_MESSAGE);
+                    } else if (approvalStatus.equals("REJECTED")) {
+                        // Stop them and show the rejection warning
+                        JOptionPane.showMessageDialog(this, 
+                            "Your apartment registration was REJECTED. Please check your email or contact support.", 
+                            "Account Rejected", 
+                            JOptionPane.ERROR_MESSAGE);
+                    }
+                } else {
+                    JOptionPane.showMessageDialog(this, "Error finding apartment details.", "Error", JOptionPane.ERROR_MESSAGE);
+                }
                 return;
             }
 
@@ -271,7 +297,27 @@ public class LandingPage extends JFrame {
             if (tenantStatus.startsWith("SUCCESS:")) {
                 int tenantId = Integer.parseInt(tenantStatus.split(":")[1]);
                 this.dispose();
-                new Dashboard.TenantDashboard(tenantId).setVisible(true); 
+                
+                // NEW LOGIC: Check if they need to complete their profile first!
+                boolean isFirstTime = false;
+                String checkSql = "SELECT contact_number FROM registered_tenants WHERE tenant_id = ?";
+                try (java.sql.Connection conn = com.mycompany.apartmentsytem1.DBConnection.connect();
+                     java.sql.PreparedStatement ps = conn.prepareStatement(checkSql)) {
+                    ps.setInt(1, tenantId);
+                    java.sql.ResultSet rs = ps.executeQuery();
+                    // If the owner bypassed registration, contact_number defaults to 'N/A'
+                    if (rs.next() && "N/A".equals(rs.getString("contact_number"))) {
+                        isFirstTime = true;
+                    }
+                } catch (Exception ex) { ex.printStackTrace(); }
+
+                if (isFirstTime) {
+                    // Send to the mandatory completion screen
+                    new TenantRegistrationWindow(tenantId).setVisible(true);
+                } else {
+                    // Send directly to dashboard
+                    new Dashboard.TenantDashboard(tenantId).setVisible(true); 
+                }
                 return;
             } else if (!"Username not found.".equals(tenantStatus) && !"Invalid password.".equals(tenantStatus)) {
                 JOptionPane.showMessageDialog(this, tenantStatus, "Registration Status", JOptionPane.INFORMATION_MESSAGE);

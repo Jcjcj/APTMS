@@ -17,7 +17,10 @@ import java.util.List;
 public class OwnerDashboard extends JFrame implements ActionListener {
 
     private int currentOwnerId;
-    private int currentApartmentId; // CRITICAL: Added to link backend tables properly
+    private int currentApartmentId; 
+    private String currentApartmentName = "My Apartment"; 
+    private boolean isViewOnly = false; // Lockout Flag
+    
     private OwnerDashboardDAO ownerDao = new OwnerDashboardDAO();
     
     // --- Core Theme Colors ---
@@ -44,8 +47,19 @@ public class OwnerDashboard extends JFrame implements ActionListener {
 
     public OwnerDashboard(int ownerId) {
         this.currentOwnerId = ownerId; 
-        this.currentApartmentId = ownerDao.getApartmentIdByOwner(ownerId); // FETCH APARTMENT ID
+        this.currentApartmentId = ownerDao.getApartmentIdByOwner(ownerId); 
         
+        // Fetch the actual Apartment Name
+        try (java.sql.Connection conn = com.mycompany.apartmentsytem1.DBConnection.connect();
+             java.sql.PreparedStatement ps = conn.prepareStatement("SELECT apartment_name FROM apartments WHERE apartment_id = ?")) {
+            ps.setInt(1, currentApartmentId);
+            java.sql.ResultSet rs = ps.executeQuery();
+            if(rs.next()) this.currentApartmentName = rs.getString("apartment_name");
+        } catch (Exception ex) {}
+
+        // ENFORCE LOCKOUT IF UNPAID
+        this.isViewOnly = !ownerDao.isApartmentActive(currentApartmentId);
+
         this.setTitle("Apartment Dashboard - Owner ID: " + ownerId + " | Apt ID: " + currentApartmentId);
         this.setExtendedState(JFrame.MAXIMIZED_BOTH);
         this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -98,7 +112,7 @@ public class OwnerDashboard extends JFrame implements ActionListener {
         JPanel navPanel = new JPanel();
         navPanel.setLayout(new BoxLayout(navPanel, BoxLayout.Y_AXIS));
         navPanel.setBackground(COLOR_SIDEBAR);
-
+        
         btnAptDash = createNavButton("Apartment Dashboard");
         btnProfit = createNavButton("Profit");
         btnExpenses = createNavButton("Expenses");
@@ -164,7 +178,208 @@ public class OwnerDashboard extends JFrame implements ActionListener {
     private void activateButton(JButton btn) { btn.setBackground(COLOR_BTN_ACTIVE); }
 
     // =========================================================================
-    // PANELS (FULLY DATABASE WIRED)
+    // NEW EXPENSES PANEL (Platform Fee & Payment Form)
+    // =========================================================================
+
+    private JPanel createExpensesCard() {
+        JPanel card = createBaseCard("Expenses");
+        
+        JPanel grid = new JPanel(new GridLayout(1, 2, 30, 0));
+        grid.setOpaque(false);
+
+        // --- LEFT COLUMN (Room Utilities Summation) ---
+        JPanel leftCol = new JPanel(new BorderLayout()); leftCol.setOpaque(false);
+        leftCol.add(createSubHeader("Room Utilities Summation"), BorderLayout.NORTH);
+        
+        JPanel utilitiesBox = createContainerBox(); 
+        utilitiesBox.setLayout(new GridLayout(3, 1));
+        
+        double[] exps = ownerDao.getExpensesSummation(currentApartmentId);
+        utilitiesBox.add(createUtilityBlock("Electricity", "₱ " + String.format("%,.2f", exps[0]))); 
+        utilitiesBox.add(createUtilityBlock("Water", "₱ " + String.format("%,.2f", exps[1]))); 
+        utilitiesBox.add(createUtilityBlock("Internet", "₱ " + String.format("%,.2f", exps[2])));
+        
+        leftCol.add(utilitiesBox, BorderLayout.CENTER);
+        grid.add(leftCol);
+
+        // --- RIGHT COLUMN (CardLayout for Table vs Form) ---
+        JPanel rightCol = new JPanel(new BorderLayout()); rightCol.setOpaque(false);
+        rightCol.add(createSubHeader("Platform Service Fee"), BorderLayout.NORTH);
+        
+        CardLayout rightCardLayout = new CardLayout();
+        JPanel rightContentPanel = new JPanel(rightCardLayout);
+        rightContentPanel.setOpaque(false);
+
+        // Add both views to the right side
+        rightContentPanel.add(createFeeTablePanel(rightCardLayout, rightContentPanel), "TABLE");
+        rightContentPanel.add(createPaymentFormPanel(rightCardLayout, rightContentPanel), "FORM");
+
+        rightCol.add(rightContentPanel, BorderLayout.CENTER);
+        grid.add(rightCol);
+
+        card.add(grid, BorderLayout.CENTER);
+        return card;
+    }
+
+    // Right Side: View 1 (The Fee Table)
+    private JPanel createFeeTablePanel(CardLayout layout, JPanel parent) {
+        JPanel panel = new JPanel(new BorderLayout()); panel.setOpaque(false);
+        
+        JPanel tableContainer = new JPanel();
+        tableContainer.setLayout(new BoxLayout(tableContainer, BoxLayout.Y_AXIS));
+        tableContainer.setOpaque(false);
+
+        // Header Row
+        JPanel headerRow = new JPanel(new GridLayout(1, 3, 5, 0)); headerRow.setOpaque(false);
+        headerRow.add(createFeeCell("ROOMS", true));
+        headerRow.add(createFeeCell("RENTS", true));
+        headerRow.add(createFeeCell("SERVICE FEE", true));
+        tableContainer.add(headerRow);
+        tableContainer.add(Box.createVerticalStrut(5));
+
+        // Data Rows
+        double totalFee = 0.0;
+        List<String[]> activeRooms = ownerDao.getActiveRoomsForServiceFee(currentApartmentId);
+        
+        if (activeRooms.isEmpty()) {
+            JLabel empty = createLabel("No active rooms.", 16, SwingConstants.CENTER);
+            empty.setBorder(BorderFactory.createEmptyBorder(20,0,0,0));
+            tableContainer.add(empty);
+        } else {
+            for (String[] room : activeRooms) {
+                JPanel row = new JPanel(new GridLayout(1, 3, 5, 0)); row.setOpaque(false);
+                row.add(createFeeCell("ROOM " + room[0].replace("Room ", ""), false));
+                row.add(createFeeCell(String.format("%,.2f", Double.parseDouble(room[1])), false));
+                row.add(createFeeCell(String.format("%,.2f", Double.parseDouble(room[2])), false));
+                tableContainer.add(row);
+                tableContainer.add(Box.createVerticalStrut(5));
+                totalFee += Double.parseDouble(room[2]);
+            }
+        }
+
+        // Total Row
+        JPanel totalRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0)); totalRow.setOpaque(false);
+        totalRow.add(createLabel("TOTAL", 18, SwingConstants.RIGHT, Font.BOLD));
+        totalRow.add(Box.createHorizontalStrut(10));
+        JPanel totalCell = createFeeCell(String.format("%,.2f", totalFee), false);
+        totalCell.setPreferredSize(new Dimension(150, 40));
+        totalRow.add(totalCell);
+        tableContainer.add(Box.createVerticalStrut(15));
+        tableContainer.add(totalRow);
+
+        panel.add(tableContainer, BorderLayout.NORTH);
+
+        // Pay Button
+        JButton btnPay = createActionButton("PAY", COLOR_BTN_ACTION);
+        btnPay.setPreferredSize(new Dimension(150, 40));
+        btnPay.addActionListener(e -> layout.show(parent, "FORM")); // Swap to Form View
+        
+        JPanel pnlBottom = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0)); pnlBottom.setOpaque(false);
+        pnlBottom.add(btnPay);
+        panel.add(pnlBottom, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    // Helper for Table Cells
+    private JPanel createFeeCell(String text, boolean isHeader) {
+        JPanel cell = new JPanel(new BorderLayout());
+        cell.setBackground(isHeader ? new Color(0, 153, 76) : COLOR_CONTAINER);
+        cell.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        cell.add(createLabel(text, 16, SwingConstants.CENTER, Font.BOLD), BorderLayout.CENTER);
+        return cell;
+    }
+
+    // Right Side: View 2 (The Payment Form)
+    private JPanel createPaymentFormPanel(CardLayout layout, JPanel parent) {
+        JPanel panel = createContainerBox();
+        panel.setLayout(new BorderLayout());
+
+        JPanel innerGrid = new JPanel(new GridLayout(1, 2, 20, 0));
+        innerGrid.setOpaque(false);
+
+        // Left Side: Dummy Methods
+        JPanel pnlMethods = new JPanel(); pnlMethods.setLayout(new BoxLayout(pnlMethods, BoxLayout.Y_AXIS)); pnlMethods.setOpaque(false);
+        pnlMethods.add(createLabel("Payment Methods", 18, SwingConstants.LEFT, Font.BOLD));
+        pnlMethods.add(Box.createVerticalStrut(20));
+        
+        pnlMethods.add(createLabel("GCash", 16, SwingConstants.LEFT, Font.PLAIN));
+        pnlMethods.add(createLabel("0978 563 1928", 16, SwingConstants.LEFT, Font.PLAIN));
+        pnlMethods.add(createLabel("(Sara Duterte)", 16, SwingConstants.LEFT, Font.PLAIN));
+        pnlMethods.add(Box.createVerticalStrut(20));
+        
+        pnlMethods.add(createLabel("Paymaya", 16, SwingConstants.LEFT, Font.PLAIN));
+        pnlMethods.add(createLabel("0978 563 1928", 16, SwingConstants.LEFT, Font.PLAIN));
+        pnlMethods.add(createLabel("(Leni Robredo)", 16, SwingConstants.LEFT, Font.PLAIN));
+        innerGrid.add(pnlMethods);
+
+        // Right Side: Inputs
+        JPanel pnlInputs = new JPanel(); pnlInputs.setLayout(new BoxLayout(pnlInputs, BoxLayout.Y_AXIS)); pnlInputs.setOpaque(false);
+        
+        JTextField txtTin = createDarkTextField("TIN Number");
+        JTextField txtMethod = createDarkTextField("Payment Method Used");
+        JTextField txtDate = createDarkTextField("Date (YYYY-MM-DD)");
+        JTextField txtRef = createDarkTextField("Reference No.");
+        
+        pnlInputs.add(txtTin); pnlInputs.add(Box.createVerticalStrut(10));
+        pnlInputs.add(txtMethod); pnlInputs.add(Box.createVerticalStrut(10));
+        pnlInputs.add(txtDate); pnlInputs.add(Box.createVerticalStrut(10));
+        pnlInputs.add(txtRef);
+        innerGrid.add(pnlInputs);
+
+        panel.add(innerGrid, BorderLayout.CENTER);
+
+        // Submit Button
+        JButton btnSubmit = createActionButton("SUBMIT", COLOR_BTN_ACTION);
+        btnSubmit.addActionListener(e -> {
+            if (ownerDao.submitPlatformFeePayment(currentApartmentId, txtTin.getText(), txtMethod.getText(), txtDate.getText(), txtRef.getText())) {
+                JOptionPane.showMessageDialog(this, "Payment Submitted! Pending Super Admin Verification.", "Success", JOptionPane.INFORMATION_MESSAGE);
+                layout.show(parent, "TABLE"); // Send back to table view
+            } else {
+                JOptionPane.showMessageDialog(this, "Failed to submit.", "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        JPanel pnlBottom = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0)); pnlBottom.setOpaque(false);
+        pnlBottom.add(btnSubmit);
+        panel.add(pnlBottom, BorderLayout.SOUTH);
+
+        return panel;
+    }
+
+    private JTextField createDarkTextField(String placeholder) {
+        JTextField txt = new JTextField();
+        txt.setBackground(new Color(0, 51, 26)); 
+        txt.setForeground(Color.WHITE);
+        txt.setCaretColor(Color.WHITE);
+        txt.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(0, 51, 26)), 
+            BorderFactory.createEmptyBorder(10, 10, 10, 10)
+        ));
+        txt.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        txt.setText(placeholder);
+        
+        // Simple placeholder clear
+        txt.addFocusListener(new java.awt.event.FocusAdapter() {
+            public void focusGained(java.awt.event.FocusEvent evt) {
+                if (txt.getText().equals(placeholder)) { txt.setText(""); }
+            }
+            public void focusLost(java.awt.event.FocusEvent evt) {
+                if (txt.getText().isEmpty()) { txt.setText(placeholder); }
+            }
+        });
+        return txt;
+    }
+
+    private JPanel createUtilityBlock(String title, String amount) {
+        JPanel pnl = new JPanel(new BorderLayout()); pnl.setOpaque(false);
+        pnl.add(createLabel(title, 24, SwingConstants.LEFT), BorderLayout.NORTH);
+        pnl.add(createLabel(amount, 50, SwingConstants.LEFT, Font.BOLD), BorderLayout.CENTER);
+        pnl.setBorder(BorderFactory.createEmptyBorder(10, 20, 20, 20)); return pnl;
+    }
+
+    // =========================================================================
+    // REMAINING CARDS & HELPERS (Untouched except for Lockout Enforcement)
     // =========================================================================
     
     private JPanel createAptDashboardCard() {
@@ -242,28 +457,6 @@ public class OwnerDashboard extends JFrame implements ActionListener {
         return card;
     }
 
-    private JPanel createExpensesCard() {
-        JPanel card = createBaseCard("Expenses");
-        JPanel mainContent = new JPanel(new BorderLayout()); mainContent.setOpaque(false);
-        mainContent.add(createSubHeader("Room Utilities Summation"), BorderLayout.NORTH);
-        
-        double[] exps = ownerDao.getExpensesSummation(currentApartmentId);
-        JPanel utilitiesBox = createContainerBox(); utilitiesBox.setLayout(new GridLayout(3, 1));
-        utilitiesBox.add(createUtilityBlock("Electricity", "₱ " + String.format("%,.2f", exps[0]))); 
-        utilitiesBox.add(createUtilityBlock("Water", "₱ " + String.format("%,.2f", exps[1]))); 
-        utilitiesBox.add(createUtilityBlock("Internet", "₱ " + String.format("%,.2f", exps[2])));
-        
-        mainContent.add(utilitiesBox, BorderLayout.CENTER); card.add(mainContent, BorderLayout.CENTER);
-        return card;
-    }
-
-    private JPanel createUtilityBlock(String title, String amount) {
-        JPanel pnl = new JPanel(new BorderLayout()); pnl.setOpaque(false);
-        pnl.add(createLabel(title, 24, SwingConstants.LEFT), BorderLayout.NORTH);
-        pnl.add(createLabel(amount, 50, SwingConstants.LEFT, Font.BOLD), BorderLayout.CENTER);
-        pnl.setBorder(BorderFactory.createEmptyBorder(10, 20, 20, 20)); return pnl;
-    }
-
     private JPanel createRoomsCard() {
         JPanel card = createBaseCard("Rooms");
         JPanel mainContent = new JPanel(new BorderLayout()); mainContent.setOpaque(false);
@@ -305,6 +498,9 @@ public class OwnerDashboard extends JFrame implements ActionListener {
         btnUpdate.setBackground(COLOR_BTN_ACTION); btnUpdate.setForeground(Color.WHITE); btnUpdate.setFont(new Font("Segoe UI", Font.BOLD, 18)); 
         btnUpdate.setFocusPainted(false); btnUpdate.setCursor(new Cursor(Cursor.HAND_CURSOR)); btnUpdate.setPreferredSize(new Dimension(0, 50));
         
+        // VIEW ONLY LOCKOUT
+        if (isViewOnly) btnUpdate.setEnabled(false);
+
         btnUpdate.addActionListener(e -> {
             boolean success = true;
             for (int i = 0; i < roomNumbersList.size(); i++) {
@@ -359,8 +555,8 @@ public class OwnerDashboard extends JFrame implements ActionListener {
         txt.setHorizontalAlignment(JTextField.CENTER);
         txt.setBackground(COLOR_CONTAINER); txt.setForeground(Color.WHITE); txt.setCaretColor(Color.WHITE);
         txt.setBorder(BorderFactory.createMatteBorder(0, 0, 2, 0, Color.WHITE)); txt.setOpaque(false);
-        if (!isEnabled) {
-            txt.setText("N/A"); txt.setEnabled(false); txt.setForeground(Color.GRAY); txt.setBorder(null);
+        if (!isEnabled || isViewOnly) { // LOCKOUT ENFORCEMENT
+            txt.setText(isEnabled ? value : "N/A"); txt.setEnabled(false); txt.setForeground(Color.GRAY); txt.setBorder(null);
         }
         return txt;
     }
@@ -373,7 +569,7 @@ public class OwnerDashboard extends JFrame implements ActionListener {
         JPanel card = createBaseCard("To Do's");
         JPanel grid = new JPanel(new GridLayout(1, 2, 30, 0)); grid.setOpaque(false);
 
-        // -- LEFT COLUMN (Room Maintenance & Announcements) --
+        // -- LEFT COLUMN --
         JPanel leftCol = new JPanel(); leftCol.setLayout(new BoxLayout(leftCol, BoxLayout.Y_AXIS)); leftCol.setOpaque(false);
         leftCol.add(createSubHeader("Active Maintenance Requests"));
         
@@ -385,33 +581,33 @@ public class OwnerDashboard extends JFrame implements ActionListener {
             for(String[] req : activeRequests) {
                 String reqId = req[0]; String roomNum = req[1]; String issue = req[2];
                 JButton btnDone = createActionButton("MARK DONE", COLOR_BTN_ACTION);
+                if (isViewOnly) btnDone.setEnabled(false); // LOCKOUT ENFORCEMENT
                 btnDone.addActionListener(e -> {
                     if(ownerDao.markMaintenanceDone(Integer.parseInt(reqId))) {
                         JOptionPane.showMessageDialog(this, "Marked as resolved!");
-                        this.dispose(); new OwnerDashboard(currentOwnerId).setVisible(true); // Refresh
+                        this.dispose(); new OwnerDashboard(currentOwnerId).setVisible(true);
                     }
                 });
                 pnlMaint.add(createListItem("Room " + roomNum, issue, null, btnDone, 80));
             }
         }
         
-        JScrollPane scrollMaint = new JScrollPane(pnlMaint);
-        scrollMaint.setBorder(null); scrollMaint.setOpaque(false); scrollMaint.getViewport().setOpaque(false);
-        leftCol.add(scrollMaint); 
-        leftCol.add(Box.createVerticalStrut(20)); 
+        JScrollPane scrollMaint = new JScrollPane(pnlMaint); scrollMaint.setBorder(null); scrollMaint.setOpaque(false); scrollMaint.getViewport().setOpaque(false);
+        leftCol.add(scrollMaint); leftCol.add(Box.createVerticalStrut(20)); 
 
         leftCol.add(createSubHeader("Send Announcement"));
         JPanel pnlAnnounce = createContainerBox(); pnlAnnounce.setLayout(new BorderLayout(0, 10));
         JTextArea txtAnnounce = new JTextArea(); 
         txtAnnounce.setBackground(COLOR_LIST_ITEM); txtAnnounce.setForeground(Color.WHITE); txtAnnounce.setCaretColor(Color.WHITE); 
-        txtAnnounce.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10)); txtAnnounce.setPreferredSize(new Dimension(0, 150)); 
-        txtAnnounce.setLineWrap(true); txtAnnounce.setWrapStyleWord(true);
+        txtAnnounce.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10)); txtAnnounce.setPreferredSize(new Dimension(0, 150)); txtAnnounce.setLineWrap(true); txtAnnounce.setWrapStyleWord(true);
+        if (isViewOnly) txtAnnounce.setEnabled(false); // LOCKOUT ENFORCEMENT
         pnlAnnounce.add(txtAnnounce, BorderLayout.CENTER);
         
         JPanel pnlSend = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0)); pnlSend.setOpaque(false);
         JComboBox<String> comboSend = new JComboBox<>(new String[]{"TO ALL TENANTS"}); comboSend.setBackground(COLOR_LIST_ITEM); comboSend.setForeground(Color.WHITE);
         
         JButton btnSend = createActionButton("SEND", COLOR_BTN_ACTION); 
+        if (isViewOnly) btnSend.setEnabled(false); // LOCKOUT ENFORCEMENT
         btnSend.addActionListener(e -> {
             if(!txtAnnounce.getText().trim().isEmpty()) {
                 ownerDao.sendAnnouncement(currentApartmentId, txtAnnounce.getText().trim());
@@ -423,22 +619,18 @@ public class OwnerDashboard extends JFrame implements ActionListener {
         pnlSend.add(comboSend); pnlSend.add(btnSend); pnlAnnounce.add(pnlSend, BorderLayout.SOUTH); 
         leftCol.add(pnlAnnounce);
 
-        // -- RIGHT COLUMN (Complaints) --
+        // -- RIGHT COLUMN --
         JPanel rightCol = new JPanel(); rightCol.setLayout(new BoxLayout(rightCol, BoxLayout.Y_AXIS)); rightCol.setOpaque(false); 
         rightCol.add(createSubHeader("Complaints & Suggestions"));
-        
         JPanel pnlComplaints = createContainerBox(); 
         List<String[]> complaints = ownerDao.getRecentComplaints(currentApartmentId);
         if(complaints.isEmpty()){
             pnlComplaints.add(createLabel("No complaints received.", 14, SwingConstants.CENTER));
         } else {
-            for(String[] comp : complaints) {
-                pnlComplaints.add(createListItem("Room " + comp[0], comp[1], comp[2], null, 100));
-            }
+            for(String[] comp : complaints) { pnlComplaints.add(createListItem("Room " + comp[0], comp[1], comp[2], null, 100)); }
         }
         
-        JScrollPane scrollComp = new JScrollPane(pnlComplaints);
-        scrollComp.setBorder(null); scrollComp.setOpaque(false); scrollComp.getViewport().setOpaque(false);
+        JScrollPane scrollComp = new JScrollPane(pnlComplaints); scrollComp.setBorder(null); scrollComp.setOpaque(false); scrollComp.getViewport().setOpaque(false);
         rightCol.add(scrollComp);
         
         grid.add(leftCol); grid.add(rightCol); card.add(grid, BorderLayout.CENTER); 
@@ -472,13 +664,11 @@ public class OwnerDashboard extends JFrame implements ActionListener {
 
     private JPanel createInquiriesCard() {
         JPanel card = createBaseCard("Inquiries");
-        JPanel grid = new JPanel(new GridLayout(1, 2, 30, 0));
-        grid.setOpaque(false);
+        JPanel grid = new JPanel(new GridLayout(1, 2, 30, 0)); grid.setOpaque(false);
 
         // -- LEFT COLUMN (Room Viewings) --
         JPanel leftCol = new JPanel(); leftCol.setLayout(new BoxLayout(leftCol, BoxLayout.Y_AXIS)); leftCol.setOpaque(false);
-        leftCol.setAlignmentY(Component.TOP_ALIGNMENT);
-        leftCol.add(createSubHeader("Room Viewings"));
+        leftCol.setAlignmentY(Component.TOP_ALIGNMENT); leftCol.add(createSubHeader("Room Viewings"));
         
         JPanel pnlViewings = createContainerBox();
         List<String[]> pendingViewings = ownerDao.getPendingRoomViewings(currentApartmentId);
@@ -492,6 +682,7 @@ public class OwnerDashboard extends JFrame implements ActionListener {
 
                 JPanel actionBtns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0)); actionBtns.setOpaque(false);
                 JButton btnAccept = createCircleIconBtn("✓", new Color(0, 204, 102), 40);
+                if (isViewOnly) btnAccept.setEnabled(false); // LOCKOUT ENFORCEMENT
                 btnAccept.addActionListener(e -> {
                     if (viewingDao.updateViewingStatus(Integer.parseInt(vId), "APPROVED")) {
                         JOptionPane.showMessageDialog(this, "Viewing Approved!");
@@ -500,9 +691,9 @@ public class OwnerDashboard extends JFrame implements ActionListener {
                 });
 
                 JButton btnReject = createCircleIconBtn("✖", new Color(220, 60, 60), 40);
+                if (isViewOnly) btnReject.setEnabled(false); // LOCKOUT ENFORCEMENT
                 btnReject.addActionListener(e -> {
-                    String reason = JOptionPane.showInputDialog(this, "Reason for Rejection:");
-                    if (reason != null && viewingDao.rejectViewing(Integer.parseInt(vId), reason)) {
+                    if (viewingDao.rejectViewing(Integer.parseInt(vId), "Schedule conflict")) {
                         this.dispose(); new OwnerDashboard(currentOwnerId).setVisible(true);
                     }
                 });
@@ -517,8 +708,7 @@ public class OwnerDashboard extends JFrame implements ActionListener {
 
         // -- RIGHT COLUMN (Pending Permanent Tenants) --
         JPanel rightCol = new JPanel(); rightCol.setLayout(new BoxLayout(rightCol, BoxLayout.Y_AXIS)); rightCol.setOpaque(false);
-        rightCol.setAlignmentY(Component.TOP_ALIGNMENT);
-        rightCol.add(createSubHeader("Pending Tenant Registrations"));
+        rightCol.setAlignmentY(Component.TOP_ALIGNMENT); rightCol.add(createSubHeader("Pending Tenant Registrations"));
         
         JPanel pnlTenants = createContainerBox();
         List<String[]> pendingTenants = ownerDao.getPendingTenants(currentApartmentId);
@@ -532,6 +722,7 @@ public class OwnerDashboard extends JFrame implements ActionListener {
 
                 JPanel actionBtns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0)); actionBtns.setOpaque(false);
                 JButton btnAccept = createCircleIconBtn("✓", new Color(0, 204, 102), 40);
+                if (isViewOnly) btnAccept.setEnabled(false); // LOCKOUT ENFORCEMENT
                 btnAccept.addActionListener(e -> {
                     if (baseOwnerDao.updateTenantStatus(Integer.parseInt(tId), "APPROVED")) {
                         JOptionPane.showMessageDialog(this, tName + " is now an official tenant!");
@@ -540,9 +731,9 @@ public class OwnerDashboard extends JFrame implements ActionListener {
                 });
 
                 JButton btnReject = createCircleIconBtn("✖", new Color(220, 60, 60), 40);
+                if (isViewOnly) btnReject.setEnabled(false); // LOCKOUT ENFORCEMENT
                 btnReject.addActionListener(e -> {
                     if (baseOwnerDao.updateTenantStatus(Integer.parseInt(tId), "REJECTED")) {
-                        JOptionPane.showMessageDialog(this, tName + " rejected.");
                         this.dispose(); new OwnerDashboard(currentOwnerId).setVisible(true);
                     }
                 });
@@ -565,19 +756,14 @@ public class OwnerDashboard extends JFrame implements ActionListener {
         mainContent.add(createSubHeader("Active Tenants"), BorderLayout.NORTH);
 
         JPanel list = createContainerBox();
-        OwnerDAO baseOwnerDao = new OwnerDAO();
-        List<String> activeTenants = baseOwnerDao.getActiveTenants(currentApartmentId);
+        List<String[]> activeTenants = ownerDao.getActiveTenantDetails(currentApartmentId);
         
         if (activeTenants.isEmpty()) {
             list.add(createLabel("No active tenants found.", 16, SwingConstants.CENTER));
         } else {
-            for(String t : activeTenants) {
-                // Parsing the formatted string from getActiveTenants for the UI
-                String[] parts = t.split(" \\| "); 
-                String room = parts[0].replace("Room: ", "");
-                String name = parts[1].replace("Name: ", "");
-                String date = parts[3].replace("Moved In: ", "");
-                list.add(createListItem(name, "Room " + room, "Joined: " + date, createTenantActions(name, room), 80));
+            for(String[] t : activeTenants) {
+                int tId = Integer.parseInt(t[0]); String name = t[1]; String room = t[2]; String contact = t[3]; String email = t[4]; String date = t[5];
+                list.add(createListItem(name, "Room " + room, "Joined: " + date, createTenantActions(tId, name, room, contact, email), 80));
             }
         }
 
@@ -586,45 +772,184 @@ public class OwnerDashboard extends JFrame implements ActionListener {
         return card;
     }
 
+    private JPanel createTenantActions(int tId, String name, String room, String contact, String email) {
+        JPanel pnl = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0)); pnl.setOpaque(false);
+        
+        JButton btnEdit = new JButton("✎"); 
+        btnEdit.setFont(new Font("Segoe UI", Font.PLAIN, 28)); btnEdit.setForeground(Color.WHITE); btnEdit.setContentAreaFilled(false); btnEdit.setBorderPainted(false); btnEdit.setCursor(new Cursor(Cursor.HAND_CURSOR)); 
+        if (!isViewOnly) btnEdit.addActionListener(e -> showDarkPopup("edit", tId, name, room, contact, email)); // LOCKOUT ENFORCEMENT
+        
+        JButton btnTrash = new JButton("🗑"); 
+        btnTrash.setFont(new Font("Segoe UI", Font.PLAIN, 28)); btnTrash.setForeground(new Color(220, 60, 60)); btnTrash.setContentAreaFilled(false); btnTrash.setBorderPainted(false); btnTrash.setCursor(new Cursor(Cursor.HAND_CURSOR)); 
+        if (!isViewOnly) btnTrash.addActionListener(e -> showDarkPopup("delete", tId, name, room, null, null)); // LOCKOUT ENFORCEMENT
+        
+        pnl.add(btnEdit); pnl.add(btnTrash); return pnl;
+    }
+
+    private void showDarkPopup(String type, int tId, String name, String room, String currentContact, String currentEmail) {
+        JDialog dialog = new JDialog(this, true); dialog.setUndecorated(true); dialog.getContentPane().setBackground(COLOR_LIST_ITEM);
+        JPanel panel = new JPanel(); panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS)); panel.setOpaque(false); panel.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(COLOR_CONTAINER, 2), BorderFactory.createEmptyBorder(40, 50, 40, 50)));
+
+        if (type.equals("edit")) {
+            JLabel lblName = createLabel("EDIT " + name.toUpperCase(), 24, SwingConstants.CENTER, Font.BOLD); lblName.setAlignmentX(Component.CENTER_ALIGNMENT); 
+            panel.add(lblName); panel.add(Box.createVerticalStrut(30));
+            
+            JTextField txtName = new JTextField(name); txtName.setPreferredSize(new Dimension(300, 40)); panel.add(txtName); panel.add(Box.createVerticalStrut(10));
+            JTextField txtContact = new JTextField(currentContact); txtContact.setPreferredSize(new Dimension(300, 40)); panel.add(txtContact); panel.add(Box.createVerticalStrut(10));
+            JTextField txtEmail = new JTextField(currentEmail); txtEmail.setPreferredSize(new Dimension(300, 40)); panel.add(txtEmail); panel.add(Box.createVerticalStrut(20));
+            
+            JButton btnApply = createActionButton("APPLY CHANGES", COLOR_BTN_ACTION); btnApply.setAlignmentX(Component.CENTER_ALIGNMENT); 
+            btnApply.addActionListener(e -> {
+                if (ownerDao.updateTenantContact(tId, txtName.getText(), txtContact.getText(), txtEmail.getText())) {
+                    JOptionPane.showMessageDialog(this, "Tenant details updated successfully!");
+                    dialog.dispose();
+                    this.dispose(); new OwnerDashboard(currentOwnerId).setVisible(true); // Hard Refresh
+                }
+            }); 
+            panel.add(btnApply);
+            
+            JButton btnCancel = createActionButton("CANCEL", new Color(150, 150, 150)); btnCancel.setAlignmentX(Component.CENTER_ALIGNMENT);
+            btnCancel.addActionListener(e -> dialog.dispose());
+            panel.add(Box.createVerticalStrut(10)); panel.add(btnCancel);
+            
+        } else if (type.equals("delete")) {
+            JLabel lblTrash = createLabel("🗑", 50, SwingConstants.CENTER); lblTrash.setForeground(new Color(220, 60, 60)); lblTrash.setAlignmentX(Component.CENTER_ALIGNMENT); 
+            JLabel lblName = createLabel("EVICT " + name, 24, SwingConstants.CENTER, Font.BOLD); lblName.setAlignmentX(Component.CENTER_ALIGNMENT); 
+            JLabel lblRoom = createLabel("Room " + room, 18, SwingConstants.CENTER, Font.PLAIN); lblRoom.setAlignmentX(Component.CENTER_ALIGNMENT);
+            panel.add(lblTrash); panel.add(Box.createVerticalStrut(10)); panel.add(lblName); panel.add(lblRoom); panel.add(Box.createVerticalStrut(20));
+            
+            JButton btnDel = createActionButton("CONFIRM EVICTION", new Color(220, 60, 60)); btnDel.setAlignmentX(Component.CENTER_ALIGNMENT); 
+            btnDel.addActionListener(e -> {
+                if (ownerDao.evictTenant(tId, currentApartmentId)) {
+                    JOptionPane.showMessageDialog(this, name + " has been officially evicted.");
+                    dialog.dispose();
+                    this.dispose(); new OwnerDashboard(currentOwnerId).setVisible(true); // Hard Refresh
+                }
+            }); 
+            panel.add(btnDel);
+            
+            JButton btnCancel = createActionButton("CANCEL", new Color(150, 150, 150)); btnCancel.setAlignmentX(Component.CENTER_ALIGNMENT);
+            btnCancel.addActionListener(e -> dialog.dispose());
+            panel.add(Box.createVerticalStrut(10)); panel.add(btnCancel);
+        }
+        dialog.add(panel); dialog.pack(); dialog.setLocationRelativeTo(this); dialog.setVisible(true);
+    }
+
     private JPanel createAccountCard() {
         JPanel card = createBaseCard("Account");
-        JPanel centerWrapper = new JPanel(new GridBagLayout()); centerWrapper.setOpaque(false);
         
-        JPanel accountBox = new JPanel(); accountBox.setLayout(new BoxLayout(accountBox, BoxLayout.Y_AXIS));
-        accountBox.setBackground(COLOR_LIST_ITEM); accountBox.setBorder(BorderFactory.createEmptyBorder(50, 60, 50, 60)); accountBox.setPreferredSize(new Dimension(500, 300));
+        // Main Grid for the two columns
+        JPanel grid = new JPanel(new GridLayout(1, 2, 40, 0)); 
+        grid.setOpaque(false);
+        grid.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+
+        // --- LEFT BOX (Change Owner Password) ---
+        JPanel leftBox = new JPanel(); 
+        leftBox.setLayout(new BoxLayout(leftBox, BoxLayout.Y_AXIS));
+        leftBox.setBackground(COLOR_LIST_ITEM); // Dark background
+        leftBox.setBorder(BorderFactory.createEmptyBorder(60, 40, 60, 40));
         
-        JLabel lblChange = createLabel("CHANGE PASSWORD", 24, SwingConstants.CENTER, Font.BOLD); lblChange.setAlignmentX(Component.CENTER_ALIGNMENT); accountBox.add(lblChange); accountBox.add(Box.createVerticalStrut(30));
-        JPanel passWrapper = new JPanel(new BorderLayout()); passWrapper.setOpaque(false); passWrapper.add(createLabel("New Password", 14, SwingConstants.LEFT), BorderLayout.NORTH);
-        JPasswordField txtPass = new JPasswordField(); txtPass.setBackground(COLOR_SIDEBAR); txtPass.setForeground(Color.WHITE); txtPass.setBorder(BorderFactory.createEmptyBorder(10,10,10,10)); txtPass.setPreferredSize(new Dimension(0, 45));
-        passWrapper.add(txtPass, BorderLayout.CENTER); accountBox.add(passWrapper); accountBox.add(Box.createVerticalStrut(30));
+        JLabel lblChange = createLabel("CHANGE YOUR PASSWORD", 24, SwingConstants.CENTER, Font.BOLD); 
+        lblChange.setAlignmentX(Component.CENTER_ALIGNMENT); 
+        leftBox.add(lblChange); 
+        leftBox.add(Box.createVerticalStrut(40));
+        
+        JPanel passWrapper = new JPanel(new BorderLayout()); passWrapper.setOpaque(false); 
+        passWrapper.add(createLabel("New Password", 14, SwingConstants.LEFT, Font.PLAIN), BorderLayout.NORTH);
+        JPasswordField txtPass = new JPasswordField(); 
+        txtPass.setBackground(COLOR_MAIN_BG); txtPass.setForeground(Color.WHITE); 
+        txtPass.setBorder(BorderFactory.createEmptyBorder(10,10,10,10)); txtPass.setPreferredSize(new Dimension(0, 45));
+        passWrapper.add(txtPass, BorderLayout.CENTER); 
+        leftBox.add(passWrapper); 
+        leftBox.add(Box.createVerticalStrut(40));
 
         JButton btnApply = createActionButton("APPLY CHANGES", COLOR_BTN_ACTION); 
         btnApply.setAlignmentX(Component.CENTER_ALIGNMENT); 
+        if (isViewOnly) btnApply.setEnabled(false); // Lockout enforcement
         btnApply.addActionListener(e -> {
             String newPass = new String(txtPass.getPassword());
             if (newPass.length() >= 6) {
                 new OwnerDAO().changePassword(currentOwnerId, newPass);
-                JOptionPane.showMessageDialog(this, "Password updated successfully.");
+                JOptionPane.showMessageDialog(this, "Password updated successfully."); 
                 txtPass.setText("");
             } else {
                 JOptionPane.showMessageDialog(this, "Password must be at least 6 characters.");
             }
         });
+        leftBox.add(btnApply);
+
+        // --- RIGHT BOX (Create Tenant Account) ---
+        JPanel rightBox = new JPanel(); 
+        rightBox.setLayout(new BoxLayout(rightBox, BoxLayout.Y_AXIS));
+        rightBox.setBackground(COLOR_LIST_ITEM); // Dark background
+        rightBox.setBorder(BorderFactory.createEmptyBorder(60, 40, 60, 40));
         
-        accountBox.add(btnApply);
-        centerWrapper.add(accountBox); card.add(centerWrapper, BorderLayout.CENTER);
+        JLabel lblCreate1 = createLabel("Create Account", 22, SwingConstants.CENTER, Font.BOLD); 
+        lblCreate1.setAlignmentX(Component.CENTER_ALIGNMENT); 
+        JLabel lblCreate2 = createLabel("for Tenant not yet in the System", 18, SwingConstants.CENTER, Font.BOLD); 
+        lblCreate2.setAlignmentX(Component.CENTER_ALIGNMENT); 
+        rightBox.add(lblCreate1); rightBox.add(lblCreate2);
+        rightBox.add(Box.createVerticalStrut(30));
+        
+        JPanel userWrapper = new JPanel(new BorderLayout()); userWrapper.setOpaque(false); 
+        userWrapper.add(createLabel("Username", 14, SwingConstants.LEFT, Font.PLAIN), BorderLayout.NORTH);
+        JTextField txtTenantUser = new JTextField(); 
+        txtTenantUser.setBackground(Color.WHITE); txtTenantUser.setForeground(Color.BLACK); 
+        txtTenantUser.setBorder(BorderFactory.createEmptyBorder(10,10,10,10)); txtTenantUser.setPreferredSize(new Dimension(0, 40));
+        userWrapper.add(txtTenantUser, BorderLayout.CENTER); 
+        rightBox.add(userWrapper); 
+        rightBox.add(Box.createVerticalStrut(15));
+        
+        JPanel tenantPassWrapper = new JPanel(new BorderLayout()); tenantPassWrapper.setOpaque(false); 
+        tenantPassWrapper.add(createLabel("Password", 14, SwingConstants.LEFT, Font.PLAIN), BorderLayout.NORTH);
+        JTextField txtTenantPass = new JTextField(); 
+        txtTenantPass.setBackground(Color.WHITE); txtTenantPass.setForeground(Color.BLACK); 
+        txtTenantPass.setBorder(BorderFactory.createEmptyBorder(10,10,10,10)); txtTenantPass.setPreferredSize(new Dimension(0, 40));
+        tenantPassWrapper.add(txtTenantPass, BorderLayout.CENTER); 
+        rightBox.add(tenantPassWrapper); 
+        rightBox.add(Box.createVerticalStrut(40));
+        
+        JButton btnCreate = createActionButton("CREATE", COLOR_BTN_ACTION); 
+        btnCreate.setAlignmentX(Component.CENTER_ALIGNMENT); 
+        if (isViewOnly) btnCreate.setEnabled(false); // Lockout enforcement
+        btnCreate.addActionListener(e -> {
+            String tUser = txtTenantUser.getText().trim();
+            String tPass = txtTenantPass.getText().trim();
+            if (tUser.isEmpty() || tPass.isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Please fill in both fields.");
+            } else {
+                if (ownerDao.createOfficialTenantAccount(currentApartmentId, tUser, tPass)) {
+                    JOptionPane.showMessageDialog(this, "Official Tenant Account created! Give these credentials to your tenant.");
+                    txtTenantUser.setText(""); txtTenantPass.setText("");
+                } else {
+                    JOptionPane.showMessageDialog(this, "Failed to create account. Username might already exist.", "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+        rightBox.add(btnCreate);
+
+        grid.add(leftBox);
+        grid.add(rightBox);
+        card.add(grid, BorderLayout.CENTER);
+        
         return card;
     }
-
-    // =========================================================================
-    // UTILITY METHODS & COMPONENT BUILDERS
-    // =========================================================================
 
     private JPanel createBaseCard(String title) {
         JPanel card = new JPanel(new BorderLayout(0, 30)); card.setBackground(COLOR_MAIN_BG); card.setOpaque(false); 
         JPanel header = new JPanel(new BorderLayout()); header.setOpaque(false); header.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
         header.add(createLabel(title, 42, SwingConstants.LEFT, Font.BOLD), BorderLayout.WEST);
-        header.add(createLabel("ID: " + currentApartmentId, 20, SwingConstants.RIGHT, Font.PLAIN), BorderLayout.EAST);
+        
+        // --- LOCKOUT WARNING BANNER ---
+        JPanel rightHeader = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0)); rightHeader.setOpaque(false);
+        if (isViewOnly) {
+            JLabel lblWarning = createLabel("⚠ ACCOUNT SUSPENDED - PLEASE PAY PLATFORM FEE", 16, SwingConstants.RIGHT, Font.BOLD);
+            lblWarning.setForeground(new Color(255, 102, 102));
+            rightHeader.add(lblWarning);
+        }
+        rightHeader.add(createLabel(currentApartmentName, 20, SwingConstants.RIGHT, Font.BOLD));
+        header.add(rightHeader, BorderLayout.EAST);
+        
         card.add(header, BorderLayout.NORTH);
         return card;
     }
@@ -666,50 +991,6 @@ public class OwnerDashboard extends JFrame implements ActionListener {
 
     private JButton createCircleIconBtn(String text, Color bg, int size) {
         JButton btn = new JButton(text); btn.setFont(new Font("Segoe UI", Font.BOLD, size/2)); btn.setBackground(bg); btn.setForeground(Color.WHITE); btn.setFocusPainted(false); btn.setPreferredSize(new Dimension(size, size)); btn.setBorder(BorderFactory.createEmptyBorder()); btn.setCursor(new Cursor(Cursor.HAND_CURSOR)); return btn;
-    }
-
-    private JPanel createTenantActions(String name, String room) {
-        JPanel pnl = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0)); pnl.setOpaque(false);
-        
-        JButton btnEdit = new JButton("✎"); btnEdit.setFont(new Font("Segoe UI", Font.PLAIN, 28)); btnEdit.setForeground(Color.WHITE); btnEdit.setContentAreaFilled(false); btnEdit.setBorderPainted(false); btnEdit.setCursor(new Cursor(Cursor.HAND_CURSOR)); 
-        btnEdit.addActionListener(e -> showDarkPopup("edit", name, room));
-        
-        JButton btnTrash = new JButton("🗑"); btnTrash.setFont(new Font("Segoe UI", Font.PLAIN, 28)); btnTrash.setForeground(new Color(220, 60, 60)); btnTrash.setContentAreaFilled(false); btnTrash.setBorderPainted(false); btnTrash.setCursor(new Cursor(Cursor.HAND_CURSOR)); 
-        btnTrash.addActionListener(e -> showDarkPopup("delete", name, room));
-        
-        pnl.add(btnEdit); pnl.add(btnTrash); return pnl;
-    }
-
-    private void showDarkPopup(String type, String name, String room) {
-        JDialog dialog = new JDialog(this, true); dialog.setUndecorated(true); dialog.getContentPane().setBackground(COLOR_LIST_ITEM);
-        JPanel panel = new JPanel(); panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS)); panel.setOpaque(false); panel.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(COLOR_CONTAINER, 2), BorderFactory.createEmptyBorder(40, 50, 40, 50)));
-
-        if (type.equals("edit")) {
-            JLabel lblName = createLabel("EDIT " + name.toUpperCase(), 24, SwingConstants.CENTER, Font.BOLD); lblName.setAlignmentX(Component.CENTER_ALIGNMENT); 
-            panel.add(lblName); panel.add(Box.createVerticalStrut(30));
-            
-            JTextField txtName = new JTextField(name); txtName.setPreferredSize(new Dimension(300, 40)); panel.add(txtName); panel.add(Box.createVerticalStrut(10));
-            JTextField txtContact = new JTextField("New Contact"); txtContact.setPreferredSize(new Dimension(300, 40)); panel.add(txtContact); panel.add(Box.createVerticalStrut(10));
-            JTextField txtEmail = new JTextField("New Email"); txtEmail.setPreferredSize(new Dimension(300, 40)); panel.add(txtEmail); panel.add(Box.createVerticalStrut(20));
-            
-            JButton btnApply = createActionButton("APPLY CHANGES", COLOR_BTN_ACTION); btnApply.setAlignmentX(Component.CENTER_ALIGNMENT); 
-            btnApply.addActionListener(e -> {
-                // To do this fully, you would look up the tenantId, but for now we close the dialog
-                dialog.dispose(); 
-            }); 
-            panel.add(btnApply);
-        } else if (type.equals("delete")) {
-            JLabel lblTrash = createLabel("🗑", 50, SwingConstants.CENTER); lblTrash.setForeground(new Color(220, 60, 60)); lblTrash.setAlignmentX(Component.CENTER_ALIGNMENT); 
-            JLabel lblName = createLabel("EVICT " + name, 24, SwingConstants.CENTER, Font.BOLD); lblName.setAlignmentX(Component.CENTER_ALIGNMENT); 
-            JLabel lblRoom = createLabel("Room " + room, 18, SwingConstants.CENTER, Font.PLAIN); lblRoom.setAlignmentX(Component.CENTER_ALIGNMENT);
-            
-            panel.add(lblTrash); panel.add(Box.createVerticalStrut(10)); panel.add(lblName); panel.add(lblRoom); panel.add(Box.createVerticalStrut(20));
-            
-            JButton btnDel = createActionButton("CONFIRM EVICTION", COLOR_BTN_ACTION); btnDel.setAlignmentX(Component.CENTER_ALIGNMENT); 
-            btnDel.addActionListener(e -> dialog.dispose()); 
-            panel.add(btnDel);
-        }
-        dialog.add(panel); dialog.pack(); dialog.setLocationRelativeTo(this); dialog.setVisible(true);
     }
 
     public static void main(String[] args) {

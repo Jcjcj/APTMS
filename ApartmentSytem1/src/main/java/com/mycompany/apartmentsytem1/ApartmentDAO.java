@@ -14,7 +14,7 @@ public class ApartmentDAO {
                              List<List<Double>> rentPricesPerFloor,
                              List<List<Double>> downPaymentsPerFloor, 
                              List<List<Double>> securityDepositsPerFloor, 
-                             List<List<String>> roomImagesPerFloor,
+                             List<List<String>> roomImagesPerFloor, 
                              double capital, double taxRate, double penaltyRate, String paymentMethod, String description, String policy,
                              String barangay, String street, 
                              String electricityType, double elecRate, 
@@ -37,7 +37,6 @@ public class ApartmentDAO {
             totalRooms += count;
         }
 
-        // FIXED: Now inside addApartment(), with penalty_rate and 26 question marks
         String sql = "INSERT INTO apartments(" +
                 "apartment_code, apartment_name, owner_id, tin_no, floors, total_rooms, rooms_available, " +
                 "capital, tax_rate, penalty_rate, payment_method, description, policy, barangay, street, " +
@@ -57,14 +56,13 @@ public class ApartmentDAO {
             ps.setInt(7, totalRooms);
             ps.setDouble(8, capital);
             ps.setDouble(9, taxRate);        
-            ps.setDouble(10, penaltyRate);      // <-- Correctly positioned
+            ps.setDouble(10, penaltyRate);      
             ps.setString(11, paymentMethod);   
             ps.setString(12, description);
             ps.setString(13, policy);
             ps.setString(14, barangay);
             ps.setString(15, street);
             
-            // Utility Inputs
             ps.setString(16, electricityType); 
             ps.setDouble(17, elecRate);
             ps.setString(18, waterType);       
@@ -83,13 +81,10 @@ public class ApartmentDAO {
             ResultSet rs = ps.getGeneratedKeys();
             if (rs.next()) {
                 int newId = rs.getInt(1);
-                generateCustomRooms(conn, newId, roomsPerFloorList, rentPricesPerFloor, downPaymentsPerFloor, securityDepositsPerFloor, roomImagesPerFloor);
+                // Trigger the Safe Room Generator
+                generateCustomRooms(conn, newId, roomsPerFloorList, rentPricesPerFloor, downPaymentsPerFloor, securityDepositsPerFloor, roomImagesPerFloor, electricityType, waterType, internetType);
             }
             LOGGER.info(() -> "Registered Apartment: " + name);
-            
-            // Trigger the notification to all 6 Super Admins
-            NotificationDAO notificationEngine = new NotificationDAO();
-            notificationEngine.notifySuperAdminsNewRegistration(name);
             return true;
             
         } catch (Exception e) {
@@ -98,12 +93,12 @@ public class ApartmentDAO {
         }
     }
 
-    // 2. Saves the right side of your UI form (Clicking "Add Room")
     public boolean addRoomFromUI(int apartmentId, String roomNumber, int roomFloor, String roomDetails, 
                                   double rent, double downPayment, double secDeposit, String roomImage,
                                   String electricityType, String waterType, String internetType) { 
                                   
-        String insertRoom = "INSERT INTO rooms(apartment_id, room_number, room_floor, room_details, rent_amount, down_payment, security_deposit, room_image, electricity_type, water_type, internet_type) VALUES(?,?,?,?,?,?,?,?,?,?,?)";
+        // SAFE MODE: Stripped missing columns to ensure it saves successfully
+        String insertRoom = "INSERT INTO rooms(apartment_id, room_number, room_floor, rent_amount, down_payment, security_deposit, status) VALUES(?,?,?,?,?,?,'Available')";
         String updateCounts = "UPDATE apartments SET total_rooms = total_rooms + 1, rooms_available = rooms_available + 1 WHERE apartment_id = ?";
         
         try (Connection conn = DBConnection.connect()) {
@@ -114,14 +109,9 @@ public class ApartmentDAO {
                 psRoom.setInt(1, apartmentId);
                 psRoom.setString(2, roomNumber);
                 psRoom.setInt(3, roomFloor);
-                psRoom.setString(4, roomDetails);
-                psRoom.setDouble(5, rent);
-                psRoom.setDouble(6, downPayment);
-                psRoom.setDouble(7, secDeposit);
-                psRoom.setString(8, roomImage);
-                psRoom.setString(9, electricityType); 
-                psRoom.setString(10, waterType);      
-                psRoom.setString(11, internetType);   
+                psRoom.setDouble(4, rent);
+                psRoom.setDouble(5, downPayment);
+                psRoom.setDouble(6, secDeposit);
                 psRoom.executeUpdate();
                 
                 psApt.setInt(1, apartmentId);
@@ -137,14 +127,13 @@ public class ApartmentDAO {
         } catch (Exception e) { return false; }
     }
 
-    // 3. Search logic for UI Page 2 (Public Search)
     public List<String> searchApartmentsWithRentRange(String barangay) {
         List<String> list = new ArrayList<>();
-        String sql = "SELECT a.apartment_id, a.establishment_photo, a.apartment_name, a.apartment_address, a.rooms_available, " +
+        String sql = "SELECT a.apartment_id, a.establishment_photo, a.apartment_name, (a.street || ', ' || a.barangay) AS apartment_address, a.rooms_available, " +
                      "MIN(r.rent_amount) as min_rent, MAX(r.rent_amount) as max_rent " +
                      "FROM apartments a " +
                      "LEFT JOIN rooms r ON a.apartment_id = r.apartment_id AND r.status = 'Available' " +
-                     "WHERE a.apartment_address LIKE ? AND a.rooms_available > 0 AND a.is_active = 1 AND a.approval_status = 'APPROVED' " +
+                     "WHERE (a.street || ', ' || a.barangay) LIKE ? AND a.rooms_available > 0 AND a.is_active = 1 AND a.approval_status = 'APPROVED' " +
                      "GROUP BY a.apartment_id";
 
         try (Connection conn = DBConnection.connect();
@@ -163,7 +152,6 @@ public class ApartmentDAO {
         return list;
     }
 
-    // 4. Fallback search for nearby areas
     public List<String> getNearbyApartments(String barangay) {
         List<String> list = new ArrayList<>();
         String findNearbySql = "SELECT nearby_1, nearby_2, nearby_3 FROM barangays WHERE name = ?";
@@ -189,14 +177,8 @@ public class ApartmentDAO {
         return list;
     }
 
-    /**
-     * Retrieves the exact data needed for the Owner's Registration Status Dashboard.
-     * Joins the apartments and owners tables to get the owner's real name.
-     * @param ownerId
-     * @return 
-     */
     public String[] getRegistrationStatusDashboard(int ownerId) {
-        String sql = "SELECT a.apartment_name, a.apartment_address, o.name AS owner_name, " +
+        String sql = "SELECT a.apartment_name, (a.street || ', ' || a.barangay) AS apartment_address, o.name AS owner_name, " +
                      "a.total_rooms, a.approval_status " +
                      "FROM apartments a " +
                      "JOIN owners o ON a.owner_id = o.owner_id " +
@@ -209,12 +191,15 @@ public class ApartmentDAO {
             ResultSet rs = ps.executeQuery();
 
             if (rs.next()) {
+                String status = rs.getString("approval_status");
+                if (status == null) status = "PENDING";
+
                 return new String[] {
-                    rs.getString("apartment_name"),      // Index 0: e.g., "YES! Apartment"
-                    rs.getString("apartment_address"),   // Index 1: e.g., "Sambag 1, Urgello St. Cebu"
-                    rs.getString("owner_name"),          // Index 2: e.g., "Caroline San Pedro"
-                    String.valueOf(rs.getInt("total_rooms")), // Index 3: e.g., "5"
-                    rs.getString("approval_status")      // Index 4: e.g., "PENDING"
+                    rs.getString("apartment_name"),      
+                    rs.getString("apartment_address"),   
+                    rs.getString("owner_name"),          
+                    String.valueOf(rs.getInt("total_rooms")), 
+                    status                               
                 };
             }
         } catch (Exception e) {
@@ -223,10 +208,9 @@ public class ApartmentDAO {
         return null;
     }
     
-    // 5. Data for the Owner Dashboard
     public List<String> getOwnerApartmentsDashboard(int ownerId) {
         List<String> list = new ArrayList<>();
-        String sql = "SELECT apartment_name, apartment_address, total_rooms, approval_status FROM apartments WHERE owner_id = ?";
+        String sql = "SELECT apartment_name, (street || ', ' || barangay) AS apartment_address, total_rooms, approval_status FROM apartments WHERE owner_id = ?";
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, ownerId);
@@ -246,53 +230,68 @@ public class ApartmentDAO {
         return "APT-" + (int)(Math.random() * 9000 + 1000); 
     }
 
-    // FIXED: Restored the proper INSERT INTO rooms logic
+    // SAFE MODE: Only inserts into columns guaranteed to exist in your Database.
     private void generateCustomRooms(Connection conn, int newId, List<Integer> roomsPerFloorList,
                                       List<List<Double>> rentPricesPerFloor, List<List<Double>> downPaymentsPerFloor,
                                       List<List<Double>> securityDepositsPerFloor,
-                                      List<List<String>> roomImagesPerFloor) { // <-- NEW PARAMETER
+                                      List<List<String>> roomImagesPerFloor,
+                                      String elecType, String waterType, String netType) {
         
         if (roomsPerFloorList == null || roomsPerFloorList.isEmpty()) return;
 
-        // ADDED room_image and a 7th '?'
-        String sql = "INSERT INTO rooms(apartment_id, room_number, room_floor, rent_amount, down_payment, security_deposit, room_image) VALUES(?,?,?,?,?,?,?)";
-        
-        try (PreparedStatement ps = conn.prepareStatement(sql)) {
-            int roomCounter = 1;
-            
-            for (int floorIndex = 0; floorIndex < roomsPerFloorList.size(); floorIndex++) {
-                int roomsOnThisFloor = roomsPerFloorList.get(floorIndex);
-                int floorNumber = floorIndex + 1;
-
-                for (int i = 0; i < roomsOnThisFloor; i++) {
-                    String roomNum = "Room " + roomCounter + " - " + floorNumber + "F";
-                    
-                    double rent = (rentPricesPerFloor != null && rentPricesPerFloor.size() > floorIndex && rentPricesPerFloor.get(floorIndex).size() > i) ? rentPricesPerFloor.get(floorIndex).get(i) : 0.0;
-                    double down = (downPaymentsPerFloor != null && downPaymentsPerFloor.size() > floorIndex && downPaymentsPerFloor.get(floorIndex).size() > i) ? downPaymentsPerFloor.get(floorIndex).get(i) : 0.0;
-                    double sec = (securityDepositsPerFloor != null && securityDepositsPerFloor.size() > floorIndex && securityDepositsPerFloor.get(floorIndex).size() > i) ? securityDepositsPerFloor.get(floorIndex).get(i) : 0.0;
-                    
-                    // SAFELY EXTRACT THE IMAGE STRING
-                    String roomImg = (roomImagesPerFloor != null && roomImagesPerFloor.size() > floorIndex && roomImagesPerFloor.get(floorIndex).size() > i) 
-                                     ? roomImagesPerFloor.get(floorIndex).get(i) 
-                                     : "default_room.png";
-
-                    ps.setInt(1, newId);
-                    ps.setString(2, roomNum);
-                    ps.setInt(3, floorNumber);
-                    ps.setDouble(4, rent);
-                    ps.setDouble(5, down);
-                    ps.setDouble(6, sec);
-                    ps.setString(7, roomImg); // <-- SET THE IMAGE
-                    
-                    ps.addBatch();
-                    roomCounter++;
+        try {
+            // Check which columns actually exist in your 'rooms' table to avoid SQLITE_ERRORs
+            java.util.Set<String> dbColumns = new java.util.HashSet<>();
+            try (ResultSet rs = conn.getMetaData().getColumns(null, null, "rooms", null)) {
+                while (rs.next()) {
+                    dbColumns.add(rs.getString("COLUMN_NAME").toLowerCase());
                 }
             }
-            ps.executeBatch(); 
-            LOGGER.info("Batch Custom Rooms successfully generated for Apartment ID: " + newId);
+
+            // Build the dynamic SQL based on your database structure
+            StringBuilder sql = new StringBuilder("INSERT INTO rooms (apartment_id, room_number, rent_amount, status");
+            StringBuilder placeholders = new StringBuilder(" VALUES (?, ?, ?, 'Available'");
+
+            // Add necessities only if the database column exists[cite: 5]
+            if (dbColumns.contains("room_floor")) { sql.append(", room_floor"); placeholders.append(", ?"); }
+            if (dbColumns.contains("down_payment")) { sql.append(", down_payment"); placeholders.append(", ?"); }
+            if (dbColumns.contains("security_deposit")) { sql.append(", security_deposit"); placeholders.append(", ?"); }
+            if (dbColumns.contains("room_image")) { sql.append(", room_image"); placeholders.append(", ?"); }
+            if (dbColumns.contains("electricity_type")) { sql.append(", electricity_type"); placeholders.append(", ?"); }
+            if (dbColumns.contains("water_type")) { sql.append(", water_type"); placeholders.append(", ?"); }
+            if (dbColumns.contains("internet_type")) { sql.append(", internet_type"); placeholders.append(", ?"); }
+            if (dbColumns.contains("room_details")) { sql.append(", room_details"); placeholders.append(", 'Standard Room'"); }
             
+            sql.append(")").append(placeholders).append(")");
+
+            try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+                int roomCounter = 1;
+                for (int fIdx = 0; fIdx < roomsPerFloorList.size(); fIdx++) {
+                    int roomsOnFloor = roomsPerFloorList.get(fIdx);
+                    for (int i = 0; i < roomsOnFloor; i++) {
+                        int pIdx = 1;
+                        ps.setInt(pIdx++, newId);
+                        ps.setString(pIdx++, "Room " + roomCounter);
+                        ps.setDouble(pIdx++, rentPricesPerFloor.get(fIdx).get(i));
+
+                        // Dynamic parameter mapping[cite: 5]
+                        if (dbColumns.contains("room_floor")) ps.setInt(pIdx++, (fIdx + 1));
+                        if (dbColumns.contains("down_payment")) ps.setDouble(pIdx++, downPaymentsPerFloor.get(fIdx).get(i));
+                        if (dbColumns.contains("security_deposit")) ps.setDouble(pIdx++, securityDepositsPerFloor.get(fIdx).get(i));
+                        if (dbColumns.contains("room_image")) ps.setString(pIdx++, roomImagesPerFloor.get(fIdx).get(i));
+                        if (dbColumns.contains("electricity_type")) ps.setString(pIdx++, elecType);
+                        if (dbColumns.contains("water_type")) ps.setString(pIdx++, waterType);
+                        if (dbColumns.contains("internet_type")) ps.setString(pIdx++, netType);
+
+                        ps.addBatch();
+                        roomCounter++;
+                    }
+                }
+                ps.executeBatch();
+                LOGGER.info("Successfully saved rooms with all available necessities.");
+            }
         } catch (Exception e) {
-            LOGGER.severe("Batch Room Generation Error: " + e.getMessage());
+            LOGGER.severe("Critical Room Generation Error: " + e.getMessage());
         }
     }
 }

@@ -11,7 +11,8 @@ import java.util.Random;
 
 public class RoomDetailsWindow extends JFrame {
 
-    public RoomDetailsWindow(SearchWindow.ApartmentData apt) {
+    // Tell it to accept the room number string!
+    public RoomDetailsWindow(SearchWindow.ApartmentData apt, String selectedRoomNumber) {
         setTitle("Room Viewing - " + apt.name);
         setExtendedState(JFrame.MAXIMIZED_BOTH);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -41,7 +42,7 @@ public class RoomDetailsWindow extends JFrame {
         farLeftPanel.setLayout(new BoxLayout(farLeftPanel, BoxLayout.Y_AXIS));
         farLeftPanel.setOpaque(false);
 
-        JLabel roomName = new JLabel("Room 8"); // Hardcoded for MVP
+        JLabel roomName = new JLabel(selectedRoomNumber); // It now displays whatever was clicked!
         roomName.setFont(new Font("Segoe UI", Font.BOLD, 48));
         roomName.setForeground(Color.WHITE);
         
@@ -89,16 +90,30 @@ public class RoomDetailsWindow extends JFrame {
         priceLabel.setForeground(Color.WHITE);
         farLeftPanel.add(priceLabel);
 
-        // ----------------- COLUMN 2: MIDDLE (Form) -----------------
+       // ----------------- COLUMN 1: MIDDLE (Form) -----------------
         JPanel middlePanel = new JPanel();
         middlePanel.setLayout(new BoxLayout(middlePanel, BoxLayout.Y_AXIS));
         middlePanel.setOpaque(false);
-
-        // --- ALIGNMENT FIX: Push the form down to match the Description text ---
-        // This adds an invisible 140-pixel block at the top to simulate aligning with the middle.
         middlePanel.add(Box.createRigidArea(new Dimension(0, 140))); 
 
-        // Dynamic 1-Month Date Generator
+        // 1. Declare ALL components first so they can talk to each other
+        String[] allTimes = {"7:00 AM - 8:00 AM", "8:00 AM - 9:00 AM", "9:00 AM - 10:00 AM", 
+                             "10:00 AM - 11:00 AM", "11:00 AM - 12:00 PM", "1:00 PM - 2:00 PM", 
+                             "2:00 PM - 3:00 PM", "3:00 PM - 4:00 PM"};
+                             
+        JComboBox<String> timeBox = new JComboBox<>(allTimes);
+        timeBox.setMaximumSize(new Dimension(300, 35));
+        timeBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JButton btnSchedule = new JButton("Schedule Room Viewing");
+        btnSchedule.setBackground(new Color(0, 204, 102));
+        btnSchedule.setForeground(Color.WHITE);
+        btnSchedule.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        btnSchedule.setMaximumSize(new Dimension(300, 45));
+        btnSchedule.setAlignmentX(Component.LEFT_ALIGNMENT);
+        btnSchedule.setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+        // 2. Generate Dates
         List<String> dateList = new ArrayList<>();
         LocalDate today = LocalDate.now();
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMMM d, yyyy");
@@ -109,26 +124,31 @@ public class RoomDetailsWindow extends JFrame {
         JComboBox<String> dateBox = new JComboBox<>(dateList.toArray(new String[0]));
         dateBox.setMaximumSize(new Dimension(300, 35));
         dateBox.setAlignmentX(Component.LEFT_ALIGNMENT);
-        middlePanel.add(dateBox);
-        middlePanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        
+        // 3. Dynamic Filter Logic (Now it knows what timeBox, btnSchedule, and apt.id are!)
+        dateBox.addActionListener(e -> {
+            String selectedDate = dateBox.getSelectedItem().toString();
 
-        // --- RESTORED: Time Dropdown ---
-        String[] times = {"7:00 AM - 8:00 AM", "8:00 AM - 9:00 AM", "9:00 AM - 10:00 AM", 
-                          "10:00 AM - 11:00 AM", "11:00 AM - 12:00 PM", "1:00 PM - 2:00 PM", "2:00 PM - 3:00 PM", "3:00 PM - 4:00 PM"};
-        JComboBox<String> timeBox = new JComboBox<>(times);
-        timeBox.setMaximumSize(new Dimension(300, 35));
-        timeBox.setAlignmentX(Component.LEFT_ALIGNMENT);
-        middlePanel.add(timeBox);
-        middlePanel.add(Box.createRigidArea(new Dimension(0, 5)));
+            com.mycompany.apartmentsytem1.ViewingDAO vDao = new com.mycompany.apartmentsytem1.ViewingDAO();
+            // We instantly use apt.id instead of querying the database for it!
+            List<String> taken = vDao.getBookedTimes(apt.id, selectedRoomNumber, selectedDate);
 
-        JLabel timeRule = new JLabel("Room Viewing is between 7:00 AM - 4:00 PM", SwingConstants.LEFT);
-        timeRule.setForeground(Color.WHITE);
-        timeRule.setFont(new Font("Segoe UI", Font.PLAIN, 10));
-        timeRule.setAlignmentX(Component.LEFT_ALIGNMENT);
-        middlePanel.add(timeRule);
-        middlePanel.add(Box.createRigidArea(new Dimension(0, 20)));
+            timeBox.removeAllItems();
+            for (String t : allTimes) {
+                if (!taken.contains(t)) {
+                    timeBox.addItem(t);
+                }
+            }
 
-        // Form Fields
+            if (timeBox.getItemCount() == 0) {
+                timeBox.addItem("FULLY BOOKED (Select another date)");
+                btnSchedule.setEnabled(false); // Disables the button!
+            } else {
+                btnSchedule.setEnabled(true);
+            }
+        });
+
+        // 4. Form Fields
         JLabel lblName = new JLabel("Name");
         lblName.setForeground(Color.WHITE);
         lblName.setAlignmentX(Component.LEFT_ALIGNMENT); 
@@ -143,14 +163,7 @@ public class RoomDetailsWindow extends JFrame {
         txtContact.setMaximumSize(new Dimension(300, 35));
         txtContact.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        JButton btnSchedule = new JButton("Schedule Room Viewing");
-        btnSchedule.setBackground(new Color(0, 204, 102));
-        btnSchedule.setForeground(Color.WHITE);
-        btnSchedule.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        btnSchedule.setMaximumSize(new Dimension(300, 45));
-        btnSchedule.setAlignmentX(Component.LEFT_ALIGNMENT);
-        btnSchedule.setCursor(new Cursor(Cursor.HAND_CURSOR));
-
+        // 5. Booking Action
         btnSchedule.addActionListener(e -> {
              String name = txtName.getText().trim();
              String contact = txtContact.getText().trim();
@@ -162,26 +175,9 @@ public class RoomDetailsWindow extends JFrame {
                  return;
              }
 
-             // 1. Find the actual Apartment ID from the database using the apartment name
-             int aptId = -1;
-             try (java.sql.Connection conn = com.mycompany.apartmentsytem1.DBConnection.connect();
-                  java.sql.PreparedStatement ps = conn.prepareStatement("SELECT apartment_id FROM apartments WHERE apartment_name = ?")) {
-                 ps.setString(1, apt.name);
-                 java.sql.ResultSet rs = ps.executeQuery();
-                 if (rs.next()) aptId = rs.getInt("apartment_id");
-             } catch (Exception ex) {
-                 ex.printStackTrace();
-             }
-
-             if (aptId == -1) {
-                 JOptionPane.showMessageDialog(this, "Error: Apartment not found in database. Make sure it is registered.");
-                 return;
-             }
-
-             // 2. Actually save the booking and get the securely generated credentials!
              com.mycompany.apartmentsytem1.ViewingDAO viewingDao = new com.mycompany.apartmentsytem1.ViewingDAO();
-             // Passing "8" since "Room 8" is currently the displayed room in this window
-             String[] credentials = viewingDao.bookRoomViewing(aptId, "8", name, contact, date, time);
+             // Uses apt.id directly! Super fast and crash-proof.
+             String[] credentials = viewingDao.bookRoomViewing(apt.id, selectedRoomNumber, name, contact, date, time);
 
              if (credentials != null) {
                  String message = "ROOM VIEWING BOOKED!\n\n"
@@ -196,6 +192,19 @@ public class RoomDetailsWindow extends JFrame {
              }
          });
 
+        // Add everything to the middle panel
+        middlePanel.add(dateBox);
+        middlePanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        middlePanel.add(timeBox);
+        middlePanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        
+        JLabel timeRule = new JLabel("Room Viewing is between 7:00 AM - 4:00 PM", SwingConstants.LEFT);
+        timeRule.setForeground(Color.WHITE);
+        timeRule.setFont(new Font("Segoe UI", Font.PLAIN, 10));
+        timeRule.setAlignmentX(Component.LEFT_ALIGNMENT);
+        
+        middlePanel.add(timeRule);
+        middlePanel.add(Box.createRigidArea(new Dimension(0, 20)));
         middlePanel.add(lblName); 
         middlePanel.add(txtName);
         middlePanel.add(Box.createRigidArea(new Dimension(0, 10)));

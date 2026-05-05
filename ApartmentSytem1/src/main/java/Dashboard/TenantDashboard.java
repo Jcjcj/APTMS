@@ -28,6 +28,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
     private JPanel cardsContainer;
     private JButton btnDash, btnMaintenance, btnNotification, btnInquiry, btnHistory, btnLogout;
     private JButton[] navButtons;
+    private boolean isViewOnly = false;
 
     // --- DATABASE VARIABLES ---
     private TenantDashboardDAO dao = new TenantDashboardDAO();
@@ -35,6 +36,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
     private int currentApartmentId = -1; 
     private String currentRoom = "N/A"; 
     private String tenantName = "Tenant";
+    private String currentApartmentName = "Apartment";
 
     public TenantDashboard(int tenantId) {
         this.currentTenantId = tenantId;
@@ -44,8 +46,9 @@ public class TenantDashboard extends JFrame implements ActionListener {
         // ---------------------------------------------------------
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(
-                 "SELECT t.name, r.apartment_id, r.room_number FROM registered_tenants t " +
+                 "SELECT t.name, r.apartment_id, r.room_number, a.apartment_name FROM registered_tenants t " +
                  "LEFT JOIN room_occupancy r ON t.tenant_id = r.tenant_id AND r.status = 'Current' " +
+                 "LEFT JOIN apartments a ON r.apartment_id = a.apartment_id " +
                  "WHERE t.tenant_id = ?")) {
             ps.setInt(1, tenantId);
             ResultSet rs = ps.executeQuery();
@@ -54,7 +57,19 @@ public class TenantDashboard extends JFrame implements ActionListener {
                 if (rs.getObject("apartment_id") != null) {
                     this.currentApartmentId = rs.getInt("apartment_id");
                     this.currentRoom = rs.getString("room_number");
+                    this.currentApartmentName = rs.getString("apartment_name"); // Grab the name!
                 }
+            }
+            
+            // Lock out the tenant if the owner hasn't paid the platform fee!
+            if (this.currentApartmentId != -1) {
+                try (PreparedStatement psLock = conn.prepareStatement("SELECT is_active FROM apartments WHERE apartment_id = ?")) {
+                    psLock.setInt(1, this.currentApartmentId);
+                    ResultSet rsLock = psLock.executeQuery();
+                    if (rsLock.next()) {
+                        this.isViewOnly = (rsLock.getInt("is_active") == 0);
+                    }
+                } catch (Exception e) {}
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -84,7 +99,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
     }
 
     // =========================================================================
-    // PANEL 1: DASHBOARD & BILLS (Wires to getMyBills & submitPayment)
+    // PANEL 1: DASHBOARD & BILLS
     // =========================================================================
     private JPanel createDashboardCard() {
         JPanel card = createBaseCard("My Bills & Payments");
@@ -135,6 +150,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
         payBox.add(Box.createVerticalStrut(20));
 
         JButton btnPay = createActionButton("SUBMIT PAYMENT", COLOR_BTN_ACTION);
+        if (isViewOnly) btnPay.setEnabled(false); // LOCKOUT
         btnPay.addActionListener(e -> {
             String ref = txtRef.getText().trim();
             if(dao.submitPayment(currentApartmentId, currentTenantId, currentRoom, cmbMethod.getSelectedItem().toString(), LocalDate.now().toString(), ref)) {
@@ -155,7 +171,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
     }
 
     // =========================================================================
-    // PANEL 2: MAINTENANCE (Wires to submitMaintenanceRequest & getMyMaintenanceRequests)
+    // PANEL 2: MAINTENANCE
     // =========================================================================
     private JPanel createMaintenanceCard() {
         JPanel card = createBaseCard("Maintenance");
@@ -174,6 +190,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
         pnlInput.add(Box.createVerticalStrut(15));
         
         JButton btnSubmit = createActionButton("SUBMIT REQUEST", COLOR_BTN_ACTION);
+        if (isViewOnly) btnSubmit.setEnabled(false); // LOCKOUT
         btnSubmit.addActionListener(e -> {
             String issue = area.getText().trim();
             if(!issue.isEmpty()){
@@ -206,7 +223,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
     }
 
     // =========================================================================
-    // PANEL 3: NOTIFICATIONS (Wires to getAnnouncements)
+    // PANEL 3: NOTIFICATIONS
     // =========================================================================
     private JPanel createNotificationCard() {
         JPanel card = createBaseCard("Announcements");
@@ -228,7 +245,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
     }
 
     // =========================================================================
-    // PANEL 4: INQUIRY/COMPLAINTS (Wires to submitComplaint)
+    // PANEL 4: INQUIRY/COMPLAINTS
     // =========================================================================
     private JPanel createInquiryCard() {
         JPanel card = createBaseCard("Inquiry & Feedback");
@@ -245,6 +262,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
         container.add(Box.createVerticalStrut(15));
         
         JButton btnSubmit = createActionButton("SEND TO OWNER", COLOR_BTN_ACTION);
+        if (isViewOnly) btnSubmit.setEnabled(false); // LOCKOUT
         btnSubmit.addActionListener(e -> {
             String msg = area.getText().trim();
             if(!msg.isEmpty()) {
@@ -261,7 +279,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
     }
 
     // =========================================================================
-    // PANEL 5: HISTORY (Wires to getMyBillHistory & getMyComplaintsHistory)
+    // PANEL 5: HISTORY
     // =========================================================================
     private JPanel createHistoryCard() {
         JPanel card = createBaseCard("My History");
@@ -295,7 +313,6 @@ public class TenantDashboard extends JFrame implements ActionListener {
     // ======================================================================================
 
     private void refreshDashboard() {
-        // Simple trick to refresh the UI by rebuilding it
         new TenantDashboard(currentTenantId).setVisible(true);
         this.dispose();
     }
@@ -305,11 +322,23 @@ public class TenantDashboard extends JFrame implements ActionListener {
         JPanel header = new JPanel(new BorderLayout()); header.setOpaque(false);
         header.add(createLabel(title, 36, SwingConstants.LEFT, Font.BOLD), BorderLayout.WEST);
         
-        JPanel userInfo = new JPanel(new GridLayout(2,1)); userInfo.setOpaque(false);
-        userInfo.add(createLabel(tenantName, 18, SwingConstants.RIGHT, Font.BOLD));
-        userInfo.add(createLabel("Room: " + currentRoom, 14, SwingConstants.RIGHT, Font.PLAIN));
-        header.add(userInfo, BorderLayout.EAST);
+        // --- FIXED: 4 ROWS (No Duplicates) ---
+        JPanel userInfo = new JPanel(new GridLayout(4,1)); 
+        userInfo.setOpaque(false);
         
+        if (isViewOnly) {
+            JLabel warning = createLabel("⚠ APARTMENT SUSPENDED", 14, SwingConstants.RIGHT, Font.BOLD);
+            warning.setForeground(new Color(255, 102, 102));
+            userInfo.add(warning);
+        } else {
+            userInfo.add(new JLabel("")); // Empty spacer
+        }
+        
+        userInfo.add(createLabel(currentApartmentName, 18, SwingConstants.RIGHT, Font.BOLD));
+        userInfo.add(createLabel(tenantName, 14, SwingConstants.RIGHT, Font.PLAIN));
+        userInfo.add(createLabel("Room: " + currentRoom, 14, SwingConstants.RIGHT, Font.PLAIN));
+        
+        header.add(userInfo, BorderLayout.EAST);
         card.add(header, BorderLayout.NORTH);
         return card;
     }
@@ -380,10 +409,27 @@ public class TenantDashboard extends JFrame implements ActionListener {
         sidebar.setPreferredSize(new Dimension(250, 0)); 
         sidebar.setBackground(COLOR_SIDEBAR);
         
+        // --- NEW LOGO HEADER ---
+        JPanel logoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 20));
+        logoPanel.setBackground(COLOR_SIDEBAR);
+        java.net.URL logoUrl = getClass().getResource("/logowhite.png");
+        JLabel logoLabel = new JLabel();
+        logoLabel.setForeground(COLOR_TEXT);
+        if (logoUrl != null) {
+            ImageIcon icon = new ImageIcon(new ImageIcon(logoUrl).getImage().getScaledInstance(50, 50, Image.SCALE_SMOOTH));
+            logoLabel.setIcon(icon);
+            logoLabel.setText("<html>Apartment<br>Management<br>System</html>");
+            logoLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        } else {
+            logoLabel.setText("System Logo");
+        }
+        logoPanel.add(logoLabel);
+        sidebar.add(logoPanel, BorderLayout.NORTH);
+        // -----------------------
+        
         JPanel navPanel = new JPanel(); 
         navPanel.setLayout(new BoxLayout(navPanel, BoxLayout.Y_AXIS)); 
         navPanel.setBackground(COLOR_SIDEBAR);
-        navPanel.add(Box.createVerticalStrut(30)); // Top padding
         
         btnDash = createNavButton("Dashboard"); 
         btnMaintenance = createNavButton("Maintenance");
@@ -447,7 +493,6 @@ public class TenantDashboard extends JFrame implements ActionListener {
     }
 
     public static void main(String[] args) {
-        // Passing '1' as a test Tenant ID so you can run this file directly during development
         SwingUtilities.invokeLater(() -> new TenantDashboard(1).setVisible(true));
     }
 }
