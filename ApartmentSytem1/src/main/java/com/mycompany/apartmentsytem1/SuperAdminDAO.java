@@ -69,7 +69,8 @@ public class SuperAdminDAO {
     
     // Super Admin verifies the QR payment and approves the apartment
     public boolean approveApartmentRegistration(int apartmentId) {
-        String sql = "UPDATE apartments SET approval_status = 'APPROVED' WHERE apartment_id = ?";
+        // Sets the status to APPROVED and starts the 1-month countdown!
+        String sql = "UPDATE apartments SET approval_status = 'APPROVED', next_billing_date = date('now', '+1 month') WHERE apartment_id = ?";
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, apartmentId);
@@ -232,10 +233,10 @@ public class SuperAdminDAO {
     // Only READS the existing dates to show warnings in the UI
     public List<String[]> getDueWarnings() {
         List<String[]> list = new ArrayList<>();
-        // Fetches apartments where the stored due date is today or earlier
+        // UPDATED: Now checks if the bill is due within the next 3 days, or is already overdue!
         String sql = "SELECT a.apartment_name, o.name, a.next_billing_date FROM apartments a " +
                      "JOIN owners o ON a.owner_id = o.owner_id " +
-                     "WHERE a.next_billing_date <= CURRENT_DATE AND a.approval_status = 'APPROVED'";
+                     "WHERE a.next_billing_date <= date('now', '+3 days') AND a.approval_status = 'APPROVED'";
                      
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql);
@@ -303,34 +304,28 @@ public class SuperAdminDAO {
     // 1. Fetches the detailed transaction list for the new UI
     public List<String[]> getTransactionOverview() {
         List<String[]> list = new ArrayList<>();
-        // We pull the apartment details and check if it's APPROVED (Paid) or SUSPENDED (Unpaid)
-        String sql = "SELECT a.apartment_id, a.apartment_name, o.name, o.contact_number, " +
-                     "a.total_rooms, COALESCE(a.next_billing_date, CURRENT_DATE) as b_date, " +
-                     "a.approval_status, a.tin_no, a.payment_method " +
+        // BUG 1 FIX: Dynamically calculates 2% of rent for ONLY 'Occupied' rooms!
+        String sql = "SELECT a.apartment_id, a.apartment_name, o.name AS owner_name, o.contact_number, " +
+                     "COUNT(r.room_number) AS active_rooms, " +
+                     "COALESCE(SUM(r.rent_amount * 0.02), 0) AS total_fee, " +
+                     "a.next_billing_date, a.approval_status, a.tin_no, a.payment_method " +
                      "FROM apartments a " +
                      "JOIN owners o ON a.owner_id = o.owner_id " +
-                     "WHERE a.approval_status IN ('APPROVED', 'SUSPENDED')";
+                     "LEFT JOIN rooms r ON a.apartment_id = r.apartment_id AND r.status = 'Occupied' " +
+                     "GROUP BY a.apartment_id";
                      
-        try (Connection conn = DBConnection.connect();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
-            
+        try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ResultSet rs = ps.executeQuery();
             while (rs.next()) {
                 list.add(new String[] {
-                    String.valueOf(rs.getInt("apartment_id")),
-                    rs.getString("apartment_name"),
-                    rs.getString("name"),
-                    rs.getString("contact_number"),
-                    String.valueOf(rs.getInt("total_rooms")),
-                    rs.getString("b_date"),
-                    rs.getString("approval_status"),
-                    rs.getString("tin_no"),
-                    rs.getString("payment_method")
+                    String.valueOf(rs.getInt("apartment_id")), rs.getString("apartment_name"),
+                    rs.getString("owner_name"), rs.getString("contact_number"),
+                    String.valueOf(rs.getInt("active_rooms")), rs.getString("next_billing_date"),
+                    rs.getString("approval_status"), rs.getString("tin_no"), rs.getString("payment_method"),
+                    String.valueOf(rs.getDouble("total_fee")) // [9] The 2% Total!
                 });
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        } catch (Exception e) { e.printStackTrace(); }
         return list;
     }
 

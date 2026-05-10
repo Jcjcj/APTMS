@@ -127,22 +127,31 @@ public class SearchWindow extends JFrame {
         JPanel card = new JPanel(new BorderLayout(0, 10)); 
         card.setOpaque(false);
 
-        JLabel imageLabel = new JLabel();
-        imageLabel.setOpaque(true);
-        imageLabel.setBackground(new Color(0, 102, 51)); 
-        imageLabel.setPreferredSize(new Dimension(300, 200)); 
+        JLabel imgPlaceholder = new JLabel();
+        imgPlaceholder.setHorizontalAlignment(SwingConstants.CENTER);
+        imgPlaceholder.setOpaque(true);
+        imgPlaceholder.setBackground(new Color(220, 240, 255)); 
+        imgPlaceholder.setPreferredSize(new Dimension(300, 200));
         
-        File imgFile = new File("uploads/" + apt.imageFileName);
-        if (imgFile.exists() && !apt.imageFileName.isEmpty()) {
-            ImageIcon icon = new ImageIcon(imgFile.getAbsolutePath());
-            Image scaledImg = icon.getImage().getScaledInstance(320, 200, Image.SCALE_SMOOTH);
-            imageLabel.setIcon(new ImageIcon(scaledImg));
-        } else {
-            imageLabel.setText("No Image Available");
-            imageLabel.setHorizontalAlignment(SwingConstants.CENTER);
-            imageLabel.setForeground(Color.WHITE);
+        // --- LIVE IMAGE RENDERING ---
+        try {
+            // NOTE: Using apt.imageFileName to match your class variables
+            java.io.File file = new java.io.File("uploads/" + apt.imageFileName); 
+            if (file.exists() && apt.imageFileName != null && !apt.imageFileName.trim().isEmpty()) {
+                ImageIcon originalIcon = new ImageIcon(file.getAbsolutePath());
+                // Smoothly scale the image to fit the search card
+                Image scaledImg = originalIcon.getImage().getScaledInstance(320, 200, Image.SCALE_SMOOTH);
+                imgPlaceholder.setIcon(new ImageIcon(scaledImg));
+            } else {
+                imgPlaceholder.setText("No Image Available");
+                imgPlaceholder.setForeground(Color.GRAY);
+            }
+        } catch (Exception ex) {
+            imgPlaceholder.setText("Image Error");
         }
-        card.add(imageLabel, BorderLayout.CENTER);
+        
+        card.add(imgPlaceholder, BorderLayout.CENTER);
+        // -----------------------------
 
         JPanel infoPanel = new JPanel(new BorderLayout());
         infoPanel.setOpaque(false);

@@ -94,4 +94,39 @@ public class RoomDAO {
         
         return rooms;
     }
+    
+    // Add this inside RoomDAO.java
+    public String[] getRoomFullDetails(int apartmentId, String roomNumber) {
+        String sql = "SELECT r.rent_amount, r.down_payment, r.security_deposit, " +
+                     "r.capacity_text, r.utilities_text, r.design_text, r.image_url, " +
+                     "a.electricity_type, a.water_type, a.internet_type " +
+                     "FROM rooms r " +
+                     "JOIN apartments a ON r.apartment_id = a.apartment_id " +
+                     "WHERE r.apartment_id = ? AND r.room_number = ?";
+                     
+        try (java.sql.Connection conn = DBConnection.connect();
+             java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+             
+            ps.setInt(1, apartmentId);
+            ps.setString(2, roomNumber);
+            java.sql.ResultSet rs = ps.executeQuery();
+            
+            if (rs.next()) {
+                return new String[] {
+                    String.valueOf(rs.getDouble("rent_amount")),         // [0]
+                    String.valueOf(rs.getDouble("down_payment")),        // [1]
+                    String.valueOf(rs.getDouble("security_deposit")),    // [2]
+                    rs.getString("capacity_text"),                       // [3] Description/Capacity
+                    rs.getString("design_text"),                         // [4] Design
+                    rs.getString("electricity_type"),                    // [5] Elec
+                    rs.getString("water_type"),                          // [6] Water
+                    rs.getString("internet_type"),                       // [7] Internet
+                    rs.getString("image_url")                            // [8] Image
+                };
+            }
+        } catch (Exception e) {
+            System.out.println("Room Details Error: " + e.getMessage());
+        }
+        return null;
+    }
 }

@@ -23,9 +23,24 @@ public class TenantDashboardDAO {
      * Array Index: [0]RentAmt, [1]RentDate, [2]ElecAmt, [3]ElecDate, [4]WaterAmt, [5]WaterDate, [6]NetAmt, [7]NetDate
      */
     public Object[] getMyBills(int apartmentId, String roomNumber) {
-        String sql = "SELECT rent_amount, rent_due_date, electricity_amount, electricity_due_date, " +
-                     "water_amount, water_due_date, internet_amount, internet_due_date " +
-                     "FROM room_bills WHERE apartment_id = ? AND room_number = ?";
+        // METER-AWARE LOGIC: Perfectly mirrors the Owner's side!
+        String sql = "SELECT " +
+                     "COALESCE(rb.rent_amount, r.rent_amount) as rent_amt, " +
+                     "COALESCE(rb.rent_due_date, 'N/A') as rent_date, " +
+                     // Electricity Logic: Fixed = Base Rate, Metered = 0.0 until Owner updates
+                     "CASE WHEN rb.electricity_amount IS NOT NULL THEN rb.electricity_amount " +
+                     "     WHEN a.electricity_type = 'Fixed' THEN a.elec_rate ELSE 0.0 END as elec_amt, " +
+                     "COALESCE(rb.electricity_due_date, 'N/A') as elec_date, " +
+                     // Water Logic: Fixed = Base Rate, Metered = 0.0 until Owner updates
+                     "CASE WHEN rb.water_amount IS NOT NULL THEN rb.water_amount " +
+                     "     WHEN a.water_type = 'Fixed' THEN a.water_rate ELSE 0.0 END as water_amt, " +
+                     "COALESCE(rb.water_due_date, 'N/A') as water_date, " +
+                     "COALESCE(rb.internet_amount, a.internet_rate, 0.0) as net_amt, " +
+                     "COALESCE(rb.internet_due_date, 'N/A') as net_date " +
+                     "FROM rooms r " +
+                     "JOIN apartments a ON r.apartment_id = a.apartment_id " +
+                     "LEFT JOIN room_bills rb ON r.room_number = rb.room_number AND r.apartment_id = rb.apartment_id " +
+                     "WHERE r.apartment_id = ? AND r.room_number = ?";
         
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -35,16 +50,15 @@ public class TenantDashboardDAO {
             
             if (rs.next()) {
                 return new Object[] {
-                    rs.getDouble("rent_amount"), rs.getString("rent_due_date"),
-                    rs.getDouble("electricity_amount"), rs.getString("electricity_due_date"),
-                    rs.getDouble("water_amount"), rs.getString("water_due_date"),
-                    rs.getDouble("internet_amount"), rs.getString("internet_due_date")
+                    rs.getDouble("rent_amt"), rs.getString("rent_date"),
+                    rs.getDouble("elec_amt"), rs.getString("elec_date"),
+                    rs.getDouble("water_amt"), rs.getString("water_date"),
+                    rs.getDouble("net_amt"), rs.getString("net_date")
                 };
             }
         } catch (Exception e) {
-            LOGGER.severe("Get Bills Error: " + e.getMessage());
+            LOGGER.severe("Meter-Aware Get Bills Error: " + e.getMessage());
         }
-        // Return empty defaults if no bills exist yet
         return new Object[] {0.0, "N/A", 0.0, "N/A", 0.0, "N/A", 0.0, "N/A"};
     }
     /**
@@ -182,5 +196,32 @@ public class TenantDashboardDAO {
             }
         } catch (Exception e) { LOGGER.severe("Tenant Complaints History Error: " + e.getMessage()); }
         return list;
-    }   
+    }
+    
+    // --- FETCH OWNER PAYMENT DETAILS (NO BANKS) ---
+    public String getOwnerPaymentDetails(int apartmentId) {
+        String details = "<html><b>Online Payment</b><br><br>No payment details provided by owner.</html>";
+        
+        String sql = "SELECT o.gcash_no, o.gcash_name, o.paymaya_no, o.paymaya_name " +
+                     "FROM owners o JOIN apartments a ON o.owner_id = a.owner_id " +
+                     "WHERE a.apartment_id = ?";
+                     
+        try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, apartmentId);
+            ResultSet rs = ps.executeQuery();
+            
+            if (rs.next()) {
+                // Formatting it perfectly for the UI text box
+                details = "<html><b>Online Payment</b><br><br>" +
+                          "<b>GCash</b><br>" + 
+                          rs.getString("gcash_no") + "<br>(" + rs.getString("gcash_name") + ")<br><br>" +
+                          "<b>Paymaya</b><br>" + 
+                          rs.getString("paymaya_no") + "<br>(" + rs.getString("paymaya_name") + ")" +
+                          "</html>";
+            }
+        } catch (Exception e) {
+            System.out.println("Payment Details Fetch Error: " + e.getMessage());
+        }
+        return details;
+    }
 }

@@ -1,236 +1,207 @@
 package main;
 
+import com.mycompany.apartmentsytem1.DBConnection;
+import com.mycompany.apartmentsytem1.ViewingDAO;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import java.awt.*;
-import java.time.LocalDate;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 
 public class RoomDetailsWindow extends JFrame {
 
-    // Tell it to accept the room number string!
-    public RoomDetailsWindow(SearchWindow.ApartmentData apt, String selectedRoomNumber) {
-        setTitle("Room Viewing - " + apt.name);
+    public RoomDetailsWindow(int apartmentId, String roomNumber) {
+        
+        // --- SECURE DATABASE PIPELINE ---
+        String aptName = "Loading...";
+        String capacity = "Loading...", utilities = "Loading...", contact = "Loading...";
+        double rent = 0.0, dp = 0.0, sd = 0.0;
+        String imgUrl = "";
+
+        String sql = "SELECT r.rent_amount, r.down_payment, r.security_deposit, r.capacity_text, r.image_url, " +
+                     "a.apartment_name, a.electricity_type, a.water_type, a.internet_type, a.contact_number, a.email " +
+                     "FROM rooms r JOIN apartments a ON r.apartment_id = a.apartment_id " +
+                     "WHERE r.apartment_id = ? AND r.room_number = ?";
+                     
+        try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, apartmentId);
+            ps.setString(2, roomNumber);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                aptName = rs.getString("apartment_name");
+                rent = rs.getDouble("rent_amount");
+                dp = rs.getDouble("down_payment");
+                sd = rs.getDouble("security_deposit");
+                capacity = rs.getString("capacity_text");
+                imgUrl = rs.getString("image_url");
+                contact = rs.getString("contact_number") + " | " + rs.getString("email");
+                
+                utilities = "Water (" + rs.getString("water_type") + ") | " +
+                            "Elec (" + rs.getString("electricity_type") + ") | " +
+                            "Net (" + rs.getString("internet_type") + ")";
+            }
+        } catch (Exception e) { e.printStackTrace(); }
+
+        setTitle("Room Viewing - " + aptName);
         setExtendedState(JFrame.MAXIMIZED_BOTH);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setLayout(new BorderLayout());
-        getContentPane().setBackground(new Color(0, 51, 26)); // Dark Green Background
+        getContentPane().setBackground(new Color(0, 51, 26));
 
         // --- HEADER ---
         JPanel headerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 20, 15));
         headerPanel.setBackground(new Color(0, 102, 51));
-        JLabel titleLabel = new JLabel("Apartment Management System");
-        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 24));
-        titleLabel.setForeground(Color.WHITE);
-        headerPanel.add(titleLabel);
+        JButton btnBack = new JButton("← Back");
+        btnBack.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        btnBack.setForeground(Color.WHITE); 
+        btnBack.setContentAreaFilled(false); btnBack.setBorderPainted(false); btnBack.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnBack.addActionListener(e -> dispose());
+        headerPanel.add(btnBack);
         add(headerPanel, BorderLayout.NORTH);
 
-        // --- MAIN 2-PART SPLIT (Left side for Info+Form, Right side for Image) ---
         JPanel mainContainer = new JPanel(new GridLayout(1, 2));
         mainContainer.setOpaque(false);
 
-        // ================= LEFT HALF (Split into Info and Form) =================
-        JPanel infoAndFormPanel = new JPanel(new GridLayout(1, 2, 40, 0)); // 2 columns inside the left half
-        infoAndFormPanel.setOpaque(false);
-        infoAndFormPanel.setBorder(new EmptyBorder(40, 40, 40, 20));
+        // ========================================================
+        // LEFT PANEL: Details & Booking Form
+        // ========================================================
+        JPanel leftPanel = new JPanel();
+        leftPanel.setLayout(new BoxLayout(leftPanel, BoxLayout.Y_AXIS));
+        leftPanel.setBackground(new Color(0, 35, 15));
+        leftPanel.setBorder(new EmptyBorder(30, 40, 30, 40));
 
-        // ----------------- COLUMN 1: FAR LEFT (Room Info & Descriptions) -----------------
-        JPanel farLeftPanel = new JPanel();
-        farLeftPanel.setLayout(new BoxLayout(farLeftPanel, BoxLayout.Y_AXIS));
-        farLeftPanel.setOpaque(false);
-
-        JLabel roomName = new JLabel(selectedRoomNumber); // It now displays whatever was clicked!
-        roomName.setFont(new Font("Segoe UI", Font.BOLD, 48));
-        roomName.setForeground(Color.WHITE);
+        JLabel lblTitle = new JLabel("Establishment Details");
+        lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 28));
+        lblTitle.setForeground(Color.WHITE);
         
-        JLabel aptName = new JLabel(apt.name);
-        aptName.setFont(new Font("Segoe UI", Font.BOLD, 24));
-        aptName.setForeground(Color.WHITE);
-
-        JLabel address = new JLabel(apt.barangay + ", " + apt.street);
-        address.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        address.setForeground(Color.LIGHT_GRAY);
-
-        farLeftPanel.add(roomName);
-        farLeftPanel.add(aptName);
-        farLeftPanel.add(address);
-        farLeftPanel.add(Box.createRigidArea(new Dimension(0, 30)));
-
-        // Description & Utilities (Side-by-side using GridLayout)
-        JPanel descUtilPanel = new JPanel(new GridLayout(1, 2, 10, 0));
-        descUtilPanel.setOpaque(false);
-        descUtilPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JLabel lblDesc = new JLabel("<html><b>Description:</b> <br>" + capacity + "</html>");
+        lblDesc.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+        lblDesc.setForeground(Color.LIGHT_GRAY);
         
-        JLabel descLabel = new JLabel("<html><b>Room Description</b><br><br>With Inside Bathroom<br>1 Bed Included<br>Appliances<br>Smart Lock<br>Kitchen with Exhaust</html>");
-        descLabel.setForeground(Color.WHITE);
-        descLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        descLabel.setVerticalAlignment(SwingConstants.TOP);
+        JLabel lblUtil = new JLabel("<html><b>Utilities:</b> <br>" + utilities + "</html>");
+        lblUtil.setFont(new Font("Segoe UI", Font.PLAIN, 16));
+        lblUtil.setForeground(Color.LIGHT_GRAY);
 
-        JLabel utilLabel = new JLabel("<html><b>Utilities</b><br><br>Water (Meter)<br>Electricity (Submeter)<br>Internet (Optional)</html>");
-        utilLabel.setForeground(Color.WHITE);
-        utilLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        utilLabel.setVerticalAlignment(SwingConstants.TOP);
+        JLabel lblDP = new JLabel("Down Payment: ₱ " + String.format("%,.2f", dp));
+        lblDP.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        lblDP.setForeground(Color.WHITE);
 
-        descUtilPanel.add(descLabel);
-        descUtilPanel.add(utilLabel);
+        JLabel lblSD = new JLabel("Security Deposit: ₱ " + String.format("%,.2f", sd));
+        lblSD.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        lblSD.setForeground(Color.WHITE);
         
-        farLeftPanel.add(descUtilPanel);
-        farLeftPanel.add(Box.createRigidArea(new Dimension(0, 30)));
+        JLabel lblContact = new JLabel("Owner Contact: " + contact);
+        lblContact.setFont(new Font("Segoe UI", Font.ITALIC, 14));
+        lblContact.setForeground(Color.ORANGE);
 
-        JLabel contactLabel = new JLabel("<html><b>Contact Details</b><br>Tel: 0932-567-3219<br>Email: yesapartment@yahoo.com</html>");
-        contactLabel.setForeground(Color.WHITE);
-        contactLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        farLeftPanel.add(contactLabel);
-        farLeftPanel.add(Box.createRigidArea(new Dimension(0, 30)));
+        leftPanel.add(lblTitle); leftPanel.add(Box.createVerticalStrut(20));
+        leftPanel.add(lblDesc); leftPanel.add(Box.createVerticalStrut(15));
+        leftPanel.add(lblUtil); leftPanel.add(Box.createVerticalStrut(20));
+        leftPanel.add(lblDP); leftPanel.add(Box.createVerticalStrut(10));
+        leftPanel.add(lblSD); leftPanel.add(Box.createVerticalStrut(20));
+        leftPanel.add(lblContact); leftPanel.add(Box.createVerticalStrut(40));
 
-        JLabel priceLabel = new JLabel("<html><b style='font-size:24px'>₱ " + String.format("%,.2f", apt.rent) + "</b><br><i style='font-size:9px'>₱ 4,000.00 Down Payment<br>₱ 7,000.00 Security Deposit</i></html>");
-        priceLabel.setForeground(Color.WHITE);
-        farLeftPanel.add(priceLabel);
+        // Booking Form
+        JLabel lblFormTitle = new JLabel("Book This Room");
+        lblFormTitle.setFont(new Font("Segoe UI", Font.BOLD, 22));
+        lblFormTitle.setForeground(new Color(0, 204, 102));
 
-       // ----------------- COLUMN 1: MIDDLE (Form) -----------------
-        JPanel middlePanel = new JPanel();
-        middlePanel.setLayout(new BoxLayout(middlePanel, BoxLayout.Y_AXIS));
-        middlePanel.setOpaque(false);
-        middlePanel.add(Box.createRigidArea(new Dimension(0, 140))); 
-
-        // 1. Declare ALL components first so they can talk to each other
-        String[] allTimes = {"7:00 AM - 8:00 AM", "8:00 AM - 9:00 AM", "9:00 AM - 10:00 AM", 
-                             "10:00 AM - 11:00 AM", "11:00 AM - 12:00 PM", "1:00 PM - 2:00 PM", 
-                             "2:00 PM - 3:00 PM", "3:00 PM - 4:00 PM"};
-                             
-        JComboBox<String> timeBox = new JComboBox<>(allTimes);
-        timeBox.setMaximumSize(new Dimension(300, 35));
-        timeBox.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        JButton btnSchedule = new JButton("Schedule Room Viewing");
-        btnSchedule.setBackground(new Color(0, 204, 102));
-        btnSchedule.setForeground(Color.WHITE);
-        btnSchedule.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        btnSchedule.setMaximumSize(new Dimension(300, 45));
-        btnSchedule.setAlignmentX(Component.LEFT_ALIGNMENT);
-        btnSchedule.setCursor(new Cursor(Cursor.HAND_CURSOR));
-
-        // 2. Generate Dates
-        List<String> dateList = new ArrayList<>();
-        LocalDate today = LocalDate.now();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("MMMM d, yyyy");
-        for (int i = 1; i <= 30; i++) {
-            dateList.add(today.plusDays(i).format(formatter));
-        }
-
-        JComboBox<String> dateBox = new JComboBox<>(dateList.toArray(new String[0]));
-        dateBox.setMaximumSize(new Dimension(300, 35));
-        dateBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JTextField txtName = createInputField("Full Name");
+        JTextField txtContact = createInputField("Contact Number");
+        JTextField txtDate = createInputField("Move-in Date (YYYY-MM-DD)");
         
-        // 3. Dynamic Filter Logic (Now it knows what timeBox, btnSchedule, and apt.id are!)
-        dateBox.addActionListener(e -> {
-            String selectedDate = dateBox.getSelectedItem().toString();
+        JComboBox<String> timeCombo = new JComboBox<>(new String[]{"08:00 - 09:00", "09:00 - 10:00", "13:00 - 14:00", "15:00 - 16:00"});
+        timeCombo.setMaximumSize(new Dimension(400, 40));
 
-            com.mycompany.apartmentsytem1.ViewingDAO vDao = new com.mycompany.apartmentsytem1.ViewingDAO();
-            // We instantly use apt.id instead of querying the database for it!
-            List<String> taken = vDao.getBookedTimes(apt.id, selectedRoomNumber, selectedDate);
+        JButton btnBook = new JButton("CONFIRM BOOKING");
+        btnBook.setBackground(new Color(0, 204, 102));
+        btnBook.setForeground(Color.WHITE);
+        btnBook.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        btnBook.setMaximumSize(new Dimension(400, 45));
+        btnBook.setCursor(new Cursor(Cursor.HAND_CURSOR));
 
-            timeBox.removeAllItems();
-            for (String t : allTimes) {
-                if (!taken.contains(t)) {
-                    timeBox.addItem(t);
-                }
-            }
-
-            if (timeBox.getItemCount() == 0) {
-                timeBox.addItem("FULLY BOOKED (Select another date)");
-                btnSchedule.setEnabled(false); // Disables the button!
+        btnBook.addActionListener(e -> {
+            ViewingDAO dao = new ViewingDAO();
+            String[] creds = dao.bookRoomViewing(apartmentId, roomNumber, txtName.getText(), txtContact.getText(), txtDate.getText(), timeCombo.getSelectedItem().toString());
+            if (creds != null) {
+                JOptionPane.showMessageDialog(this, "Success! Give these to the tenant to log in:\nUser: " + creds[0] + "\nPass: " + creds[1]);
+                dispose();
             } else {
-                btnSchedule.setEnabled(true);
+                JOptionPane.showMessageDialog(this, "Failed to book viewing.");
             }
         });
 
-        // 4. Form Fields
-        JLabel lblName = new JLabel("Name");
-        lblName.setForeground(Color.WHITE);
-        lblName.setAlignmentX(Component.LEFT_ALIGNMENT); 
-        JTextField txtName = new JTextField();
-        txtName.setMaximumSize(new Dimension(300, 35));
-        txtName.setAlignmentX(Component.LEFT_ALIGNMENT);
+        leftPanel.add(lblFormTitle); leftPanel.add(Box.createVerticalStrut(15));
+        leftPanel.add(txtName); leftPanel.add(Box.createVerticalStrut(10));
+        leftPanel.add(txtContact); leftPanel.add(Box.createVerticalStrut(10));
+        leftPanel.add(txtDate); leftPanel.add(Box.createVerticalStrut(10));
+        leftPanel.add(timeCombo); leftPanel.add(Box.createVerticalStrut(20));
+        leftPanel.add(btnBook);
 
-        JLabel lblContact = new JLabel("Contact Number");
-        lblContact.setForeground(Color.WHITE);
-        lblContact.setAlignmentX(Component.LEFT_ALIGNMENT);
-        JTextField txtContact = new JTextField();
-        txtContact.setMaximumSize(new Dimension(300, 35));
-        txtContact.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        // 5. Booking Action
-        btnSchedule.addActionListener(e -> {
-             String name = txtName.getText().trim();
-             String contact = txtContact.getText().trim();
-             String date = dateBox.getSelectedItem().toString();
-             String time = timeBox.getSelectedItem().toString();
-
-             if(name.isEmpty() || contact.isEmpty()) {
-                 JOptionPane.showMessageDialog(this, "Please enter your name and contact number.");
-                 return;
-             }
-
-             com.mycompany.apartmentsytem1.ViewingDAO viewingDao = new com.mycompany.apartmentsytem1.ViewingDAO();
-             // Uses apt.id directly! Super fast and crash-proof.
-             String[] credentials = viewingDao.bookRoomViewing(apt.id, selectedRoomNumber, name, contact, date, time);
-
-             if (credentials != null) {
-                 String message = "ROOM VIEWING BOOKED!\n\n"
-                                + "Room Viewing booked, use the Temporary LOG IN Credentials\n"
-                                + "to view the status of your booking.\n\n"
-                                + "Username: " + credentials[0] + "\n"
-                                + "Password: " + credentials[1];
-                 JOptionPane.showMessageDialog(this, message, "Success!", JOptionPane.INFORMATION_MESSAGE);
-                 this.dispose(); 
-             } else {
-                 JOptionPane.showMessageDialog(this, "Failed to book viewing. Database error.", "Error", JOptionPane.ERROR_MESSAGE);
-             }
-         });
-
-        // Add everything to the middle panel
-        middlePanel.add(dateBox);
-        middlePanel.add(Box.createRigidArea(new Dimension(0, 10)));
-        middlePanel.add(timeBox);
-        middlePanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        
-        JLabel timeRule = new JLabel("Room Viewing is between 7:00 AM - 4:00 PM", SwingConstants.LEFT);
-        timeRule.setForeground(Color.WHITE);
-        timeRule.setFont(new Font("Segoe UI", Font.PLAIN, 10));
-        timeRule.setAlignmentX(Component.LEFT_ALIGNMENT);
-        
-        middlePanel.add(timeRule);
-        middlePanel.add(Box.createRigidArea(new Dimension(0, 20)));
-        middlePanel.add(lblName); 
-        middlePanel.add(txtName);
-        middlePanel.add(Box.createRigidArea(new Dimension(0, 10)));
-        middlePanel.add(lblContact); 
-        middlePanel.add(txtContact);
-        middlePanel.add(Box.createRigidArea(new Dimension(0, 20)));
-        middlePanel.add(btnSchedule);
-
-        infoAndFormPanel.add(farLeftPanel);
-        infoAndFormPanel.add(middlePanel);
-
-        // ================= RIGHT HALF (Image) =================
+        // ========================================================
+        // RIGHT PANEL: Image & Price
+        // ========================================================
         JPanel rightPanel = new JPanel(new BorderLayout());
         rightPanel.setOpaque(false);
-        rightPanel.setBorder(new EmptyBorder(40, 0, 40, 40));
+        rightPanel.setBorder(new EmptyBorder(40, 40, 40, 40));
 
-        JLabel imageLabel = new JLabel("No Image Uploaded", SwingConstants.CENTER);
-        imageLabel.setFont(new Font("Segoe UI", Font.BOLD, 24));
-        imageLabel.setForeground(Color.WHITE);
-        imageLabel.setOpaque(true);
-        imageLabel.setBackground(new Color(0, 102, 51));
+        JLabel imgLabel = new JLabel();
+        imgLabel.setHorizontalAlignment(SwingConstants.CENTER);
+        imgLabel.setOpaque(true);
+        imgLabel.setBackground(new Color(220, 240, 255));
+        
+        try {
+            java.io.File file = new java.io.File("uploads/" + imgUrl);
+            if (file.exists() && imgUrl != null && !imgUrl.trim().isEmpty()) {
+                ImageIcon icon = new ImageIcon(file.getAbsolutePath());
+                Image scaled = icon.getImage().getScaledInstance(600, 450, Image.SCALE_SMOOTH);
+                imgLabel.setIcon(new ImageIcon(scaled));
+            } else {
+                imgLabel.setText("No Image Available");
+                imgLabel.setForeground(Color.GRAY);
+                imgLabel.setFont(new Font("Segoe UI", Font.BOLD, 24));
+            }
+        } catch (Exception ex) { imgLabel.setText("Image Error"); }
 
-        rightPanel.add(imageLabel, BorderLayout.CENTER);
+        JPanel titlePanel = new JPanel();
+        titlePanel.setLayout(new BoxLayout(titlePanel, BoxLayout.Y_AXIS));
+        titlePanel.setOpaque(false);
+        titlePanel.setBorder(new EmptyBorder(20, 0, 0, 0));
 
-        mainContainer.add(infoAndFormPanel);
+        JLabel lblRoom = new JLabel(roomNumber);
+        lblRoom.setFont(new Font("Segoe UI", Font.BOLD, 48));
+        lblRoom.setForeground(Color.WHITE);
+        lblRoom.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        JLabel lblPrice = new JLabel("₱ " + String.format("%,.2f", rent) + " / mos");
+        lblPrice.setFont(new Font("Segoe UI", Font.BOLD, 24));
+        lblPrice.setForeground(new Color(0, 204, 102));
+        lblPrice.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        titlePanel.add(lblRoom);
+        titlePanel.add(lblPrice);
+
+        rightPanel.add(imgLabel, BorderLayout.CENTER);
+        rightPanel.add(titlePanel, BorderLayout.SOUTH);
+
+        mainContainer.add(leftPanel);
         mainContainer.add(rightPanel);
         add(mainContainer, BorderLayout.CENTER);
+    }
+
+    private JTextField createInputField(String placeholder) {
+        JTextField txt = new JTextField(placeholder);
+        txt.setMaximumSize(new Dimension(400, 40));
+        txt.setBackground(new Color(0, 51, 26));
+        txt.setForeground(Color.WHITE);
+        txt.setCaretColor(Color.WHITE);
+        txt.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        txt.setBorder(BorderFactory.createCompoundBorder(BorderFactory.createLineBorder(new Color(0, 102, 51)), BorderFactory.createEmptyBorder(5, 10, 5, 10)));
+        txt.addFocusListener(new java.awt.event.FocusAdapter() {
+            public void focusGained(java.awt.event.FocusEvent evt) { if (txt.getText().equals(placeholder)) txt.setText(""); }
+            public void focusLost(java.awt.event.FocusEvent evt) { if (txt.getText().isEmpty()) txt.setText(placeholder); }
+        });
+        return txt;
     }
 }

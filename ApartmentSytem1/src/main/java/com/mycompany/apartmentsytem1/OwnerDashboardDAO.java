@@ -112,20 +112,26 @@ public class OwnerDashboardDAO {
 
     public List<String[]> getOwnerRooms(int apartmentId) {
         List<String[]> rooms = new ArrayList<>();
+        
+        // METER-AWARE FIX: Automatically populates Fixed rates, but leaves Metered rates at 0.00 for manual input!
         String sql = "SELECT r.room_number, a.internet_type, " +
                      "COALESCE(rb.rent_amount, r.rent_amount) as display_rent, " +
-                     "COALESCE(rb.electricity_amount, 0) as e_amt, " +
-                     "COALESCE(rb.water_amount, 0) as w_amt, " +
-                     "COALESCE(rb.internet_amount, 0) as i_amt " +
+                     "CASE WHEN rb.electricity_amount IS NOT NULL THEN rb.electricity_amount " +
+                     "     WHEN a.electricity_type = 'Fixed' THEN a.elec_rate ELSE 0.0 END as e_amt, " +
+                     "CASE WHEN rb.water_amount IS NOT NULL THEN rb.water_amount " +
+                     "     WHEN a.water_type = 'Fixed' THEN a.water_rate ELSE 0.0 END as w_amt, " +
+                     "COALESCE(rb.internet_amount, a.internet_rate, 0.0) as i_amt " +
                      "FROM rooms r JOIN apartments a ON r.apartment_id = a.apartment_id " +
                      "LEFT JOIN room_bills rb ON r.room_number = rb.room_number AND rb.apartment_id = r.apartment_id " +
                      "WHERE r.apartment_id = ? ORDER BY r.room_number ASC";
-                     
+        
         try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, apartmentId);
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
+                // Check if internet is offered
                 boolean hasNet = !rs.getString("internet_type").equalsIgnoreCase("None");
+                
                 rooms.add(new String[]{
                     rs.getString("room_number"),
                     String.valueOf(rs.getDouble("display_rent")),
@@ -312,22 +318,28 @@ public class OwnerDashboardDAO {
         } catch (Exception e) { return false; }
     }
     
-    // Creates an official, approved tenant account with basic credentials securely
-    public boolean createOfficialTenantAccount(int apartmentId, String username, String rawPassword) {
-        String sql = "INSERT INTO registered_tenants (name, target_apartment_id, username, password, approval_status, is_active, contact_number) " +
-                     "VALUES ('New Tenant', ?, ?, ?, 'APPROVED', 1, 'N/A')";
+    // Creates an official, approved tenant account and returns the new Tenant ID
+    public int createOfficialTenantAccount(int apartmentId, String name, String roomNumber, String username, String rawPassword) {
+        String sql = "INSERT INTO registered_tenants (name, target_apartment_id, target_room_number, username, password, approval_status, is_active, contact_number) " +
+                     "VALUES (?, ?, ?, ?, ?, 'APPROVED', 1, 'N/A')";
                      
         try (Connection conn = DBConnection.connect(); 
-             PreparedStatement ps = conn.prepareStatement(sql)) {
+             PreparedStatement ps = conn.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS)) {
              
-            ps.setInt(1, apartmentId);
-            ps.setString(2, username);
-            ps.setString(3, PasswordUtil.hashPassword(rawPassword)); // Securely hash it!
+            ps.setString(1, name);
+            ps.setInt(2, apartmentId);
+            ps.setString(3, roomNumber);
+            ps.setString(4, username);
+            ps.setString(5, PasswordUtil.hashPassword(rawPassword)); // Securely hash it!
             
-            return ps.executeUpdate() > 0;
+            ps.executeUpdate();
+            ResultSet rs = ps.getGeneratedKeys();
+            if (rs.next()) {
+                return rs.getInt(1); // Return the newly generated tenant_id
+            }
         } catch(Exception e) {
             LOGGER.severe("Tenant Creation Error: " + e.getMessage());
-            return false;
         }
+        return -1;
     }
 }

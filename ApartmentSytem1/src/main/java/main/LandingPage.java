@@ -267,11 +267,13 @@ public class LandingPage extends JFrame {
                 if (statusData != null) {
                     String approvalStatus = statusData[4]; // Index 4 holds the 'PENDING', 'APPROVED', or 'REJECTED' status
                     
-                    if (approvalStatus.equals("APPROVED")) {
+                   // BUG 6 FIXED: Allow SUSPENDED owners to log in so they can access the payment form!
+                    if (approvalStatus.equals("APPROVED") || approvalStatus.equals("SUSPENDED")) {
                         // Success! Let them into the Dashboard
                         this.dispose();
                         new Dashboard.OwnerDashboard(ownerId).setVisible(true); 
                     } else if (approvalStatus.equals("PENDING")) {
+                        
                         // Stop them and show a polite message
                         JOptionPane.showMessageDialog(this, 
                             "Your apartment registration is still PENDING Super Admin approval. Please check back later.", 
