@@ -170,6 +170,68 @@ public class SuperAdminDAO {
         }
     }
     
+    public String[] getOwnerRegistrationDetailsForReview(int apartmentId) {
+        String sql = "SELECT " +
+                     "o.name AS owner_name, o.contact_number AS owner_contact, o.email AS owner_email, " +
+                     "o.address AS owner_address, o.emergency_number AS owner_emergency, o.username AS owner_username, " +
+                     "o.gcash_no, o.gcash_name, o.paymaya_no, o.paymaya_name, o.valid_id AS owner_valid_id, " +
+                     "a.apartment_name, a.apartment_code, a.tin_no, a.floors, a.total_rooms, a.rooms_available, " +
+                     "a.capital, a.tax_rate, a.penalty_rate, a.payment_method, a.description, a.policy, " +
+                     "a.barangay, a.street, a.electricity_type, a.elec_rate, a.water_type, a.water_rate, " +
+                     "a.internet_type, a.internet_rate, a.contact_number AS apartment_contact, a.email AS apartment_email, " +
+                     "a.emergency_number AS apartment_emergency, a.approval_status, a.rejection_reason, a.next_billing_date " +
+                     "FROM apartments a JOIN owners o ON a.owner_id = o.owner_id WHERE a.apartment_id = ?";
+
+        try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, apartmentId);
+            ResultSet rs = ps.executeQuery();
+            if (!rs.next()) return null;
+
+            return new String[] {
+                    rs.getString("owner_name"),
+                    rs.getString("owner_contact"),
+                    rs.getString("owner_email"),
+                    rs.getString("owner_address"),
+                    rs.getString("owner_emergency"),
+                    rs.getString("owner_username"),
+                    rs.getString("gcash_no"),
+                    rs.getString("gcash_name"),
+                    rs.getString("paymaya_no"),
+                    rs.getString("paymaya_name"),
+                    rs.getString("owner_valid_id"),
+                    rs.getString("apartment_name"),
+                    rs.getString("apartment_code"),
+                    rs.getString("tin_no"),
+                    String.valueOf(rs.getInt("floors")),
+                    String.valueOf(rs.getInt("total_rooms")),
+                    String.valueOf(rs.getInt("rooms_available")),
+                    "PHP " + String.format("%,.2f", rs.getDouble("capital")),
+                    String.format("%.2f%%", rs.getDouble("tax_rate") * 100.0),
+                    String.format("%.2f%%", rs.getDouble("penalty_rate") * 100.0),
+                    rs.getString("payment_method"),
+                    rs.getString("description"),
+                    rs.getString("policy"),
+                    rs.getString("barangay"),
+                    rs.getString("street"),
+                    rs.getString("electricity_type"),
+                    String.valueOf(rs.getDouble("elec_rate")),
+                    rs.getString("water_type"),
+                    String.valueOf(rs.getDouble("water_rate")),
+                    rs.getString("internet_type"),
+                    String.valueOf(rs.getDouble("internet_rate")),
+                    rs.getString("apartment_contact"),
+                    rs.getString("apartment_email"),
+                    rs.getString("apartment_emergency"),
+                    rs.getString("approval_status"),
+                    rs.getString("rejection_reason"),
+                    rs.getString("next_billing_date")
+            };
+        } catch (Exception e) {
+            LOGGER.severe("Get Owner Registration Details Error: " + e.getMessage());
+        }
+        return null;
+    }
+    
     // Fetches pending apartments to populate the Admin's Inquiry screen
     public List<String[]> getPendingApartments() {
         List<String[]> list = new ArrayList<>();

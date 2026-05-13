@@ -52,6 +52,7 @@ public class SignUp extends JFrame implements ActionListener {
     private JTextField txtTenName, txtTenContact, txtTenEmail, txtTenAddress, txtTenEmergency;
     private JTextField txtTenAptName, txtTenMoveIn, txtTenOccupants, txtTenRoomNum, txtTenUser;
     private JPasswordField txtTenPass;
+    private JCheckBox cbTenantPolicyAgreement;
     private String tenantRegistrationMode = "";
     private String pendingTenantName = "";
     private String pendingTenantContact = "";
@@ -295,7 +296,7 @@ public class SignUp extends JFrame implements ActionListener {
                     null, aptName, finalTin, floors, 
                     roomsPerFloor, roomNamesArray, rentPrices, downPayments, secDeposits,
                     roomImagesPerFloor, roomDescriptionsPerFloor,     
-                    capital, 0.02, penaltyRateVal, finalMethod, description, policy, 
+                    capital, 0.12, penaltyRateVal, finalMethod, description, policy, 
                     barangay, street, 
                     elecType, elecRate, waterType, waterRate, netType, netRate, 
                     aptContact, aptEmail, aptEmergency, profileImgPath, 
@@ -333,6 +334,14 @@ public class SignUp extends JFrame implements ActionListener {
             String tRoomNum = txtTenRoomNum.getText().trim();
             String tMoveIn = txtTenMoveIn.getText().trim();
             String tOccupants = txtTenOccupants.getText().trim();
+
+            if (cbTenantPolicyAgreement == null || !cbTenantPolicyAgreement.isSelected()) {
+                JOptionPane.showMessageDialog(this,
+                        "Please review and agree to the apartment policy before signing up.",
+                        "Apartment Policy Required",
+                        JOptionPane.WARNING_MESSAGE);
+                return;
+            }
 
             String tId = (validIdFile != null) ? com.mycompany.apartmentsytem1.FileStorageUtil.saveImage(validIdFile) : "no_id.png";
 
@@ -430,8 +439,12 @@ public class SignUp extends JFrame implements ActionListener {
         JTextField popTin = createDarkPopupField("TIN Number");
         if (!prefillTin.isEmpty()) { popTin.setText(prefillTin); popTin.setForeground(Color.WHITE); }
         
-        JTextField popMethod = createDarkPopupField("Payment Method Used");
-        if (!prefillMethod.isEmpty()) { popMethod.setText(prefillMethod); popMethod.setForeground(Color.WHITE); }
+        JComboBox<String> popMethod = createDarkPopupComboBox(new String[]{"GCash", "Paymaya"});
+        if (prefillMethod.toLowerCase().contains("paymaya") || prefillMethod.toLowerCase().contains("maya")) {
+            popMethod.setSelectedItem("Paymaya");
+        } else {
+            popMethod.setSelectedItem("GCash");
+        }
         
         JTextField popDate = createDarkPopupField("Date (YYYY-MM-DD)");
         JTextField popRef = createDarkPopupField("Reference No.");
@@ -450,7 +463,7 @@ public class SignUp extends JFrame implements ActionListener {
         
         btnSubmitPop.addActionListener(e -> {
             result[0] = popTin.getText().equals("TIN Number") ? "" : popTin.getText();
-            result[1] = popMethod.getText().equals("Payment Method Used") ? "" : popMethod.getText();
+            result[1] = popMethod.getSelectedItem() != null ? popMethod.getSelectedItem().toString() : "";
             result[2] = popDate.getText().equals("Date (YYYY-MM-DD)") ? "" : popDate.getText();
             result[3] = popRef.getText().equals("Reference No.") ? "" : popRef.getText();
             dialog.dispose();
@@ -475,6 +488,32 @@ public class SignUp extends JFrame implements ActionListener {
         
         if (result[0] == null) return null; 
         return result;
+    }
+
+    private JComboBox<String> createDarkPopupComboBox(String[] options) {
+        JComboBox<String> combo = new JComboBox<>(options);
+        combo.setBackground(new Color(0, 35, 20));
+        combo.setForeground(Color.WHITE);
+        combo.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        combo.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        combo.setBorder(BorderFactory.createCompoundBorder(
+            BorderFactory.createLineBorder(new Color(0, 35, 20)),
+            BorderFactory.createEmptyBorder(8, 10, 8, 10)
+        ));
+        combo.setUI(new javax.swing.plaf.basic.BasicComboBoxUI());
+        combo.setRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                label.setHorizontalAlignment(SwingConstants.CENTER);
+                label.setFont(new Font("Segoe UI", Font.BOLD, 14));
+                label.setForeground(Color.WHITE);
+                label.setBackground(isSelected ? new Color(0, 102, 51) : new Color(0, 35, 20));
+                label.setBorder(BorderFactory.createEmptyBorder(8, 10, 8, 10));
+                return label;
+            }
+        });
+        return combo;
     }
     
     private JTextField createDarkPopupField(String placeholder) {
@@ -944,6 +983,67 @@ public class SignUp extends JFrame implements ActionListener {
         return panel;
     }
 
+    private void showTenantApartmentPolicyDialog() {
+        String apartmentName = txtTenAptName != null ? txtTenAptName.getText().trim() : "";
+        if (apartmentName.isEmpty()) {
+            JOptionPane.showMessageDialog(this,
+                    "Please enter the apartment name first so the correct policy can be loaded.",
+                    "Apartment Name Required",
+                    JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        String policy = getApartmentPolicy(apartmentName);
+        if (policy == null) {
+            JOptionPane.showMessageDialog(this,
+                    "Apartment not found. Please check the apartment name before agreeing to the policy.",
+                    "Apartment Not Found",
+                    JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
+        if (policy.isBlank()) {
+            policy = "This apartment owner has not provided additional written policies.";
+        }
+
+        JTextArea textArea = new JTextArea(policy);
+        textArea.setEditable(false);
+        textArea.setLineWrap(true);
+        textArea.setWrapStyleWord(true);
+        textArea.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        textArea.setMargin(new Insets(10, 10, 10, 10));
+
+        JScrollPane scroll = new JScrollPane(textArea);
+        scroll.setPreferredSize(new Dimension(520, 360));
+        JOptionPane.showMessageDialog(this, scroll, "Apartment Policy - " + apartmentName, JOptionPane.INFORMATION_MESSAGE);
+
+        if (cbTenantPolicyAgreement != null) {
+            cbTenantPolicyAgreement.setEnabled(true);
+        }
+    }
+
+    private String getApartmentPolicy(String apartmentName) {
+        String sql = "SELECT policy FROM apartments WHERE apartment_name = ? AND is_active = 1 LIMIT 1";
+
+        try (java.sql.Connection conn = com.mycompany.apartmentsytem1.DBConnection.connect();
+             java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setString(1, apartmentName);
+
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getString("policy");
+                }
+            }
+        } catch (Exception ex) {
+            JOptionPane.showMessageDialog(this,
+                    "Error loading apartment policy: " + ex.getMessage(),
+                    "Policy Load Error",
+                    JOptionPane.ERROR_MESSAGE);
+        }
+
+        return null;
+    }
+
     public JPanel tenantRegistration() {
         JPanel container = new JPanel(new GridBagLayout());
         container.setOpaque(false);
@@ -1075,6 +1175,27 @@ public class SignUp extends JFrame implements ActionListener {
             }
         });
         rightCol.add(btnUploadId, gbc);
+
+        gbc.gridy++; gbc.insets = new Insets(20, 0, 5, 0);
+        JButton btnViewPolicy = new JButton("<html><center>View Apartment<br>Policy</center></html>");
+        btnViewPolicy.setPreferredSize(new Dimension(200, 45));
+        btnViewPolicy.setBackground(new Color(0, 153, 76));
+        btnViewPolicy.setForeground(Color.WHITE);
+        btnViewPolicy.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        btnViewPolicy.setFocusPainted(false);
+        btnViewPolicy.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnViewPolicy.addActionListener(e -> showTenantApartmentPolicyDialog());
+        rightCol.add(btnViewPolicy, gbc);
+
+        gbc.gridy++; gbc.insets = new Insets(8, 0, 0, 0);
+        cbTenantPolicyAgreement = new JCheckBox("<html>I have read and agree<br>to the apartment policy.</html>");
+        cbTenantPolicyAgreement.setOpaque(false);
+        cbTenantPolicyAgreement.setForeground(Color.WHITE);
+        cbTenantPolicyAgreement.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        cbTenantPolicyAgreement.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        cbTenantPolicyAgreement.setEnabled(false);
+        rightCol.add(cbTenantPolicyAgreement, gbc);
+
         colGbc.gridx = 2; bodyPanel.add(rightCol, colGbc);
 
         mainGbc.gridy = 1; mainGbc.fill = GridBagConstraints.HORIZONTAL; mainGbc.weightx = 1.0;

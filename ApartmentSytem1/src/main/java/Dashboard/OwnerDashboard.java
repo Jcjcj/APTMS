@@ -127,7 +127,24 @@ public class OwnerDashboard extends JFrame implements ActionListener {
         sidebar.setMaximumSize(new Dimension(250, 0));
         sidebar.setBackground(COLOR_SIDEBAR);
 
-        // logoPanel ... (unchanged)
+        JPanel logoPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 20));
+        logoPanel.setBackground(COLOR_SIDEBAR);
+
+        URL logoUrl = getClass().getResource("/logowhite.png");
+        JLabel logoLabel = new JLabel();
+        logoLabel.setForeground(COLOR_TEXT);
+        if (logoUrl != null) {
+            ImageIcon icon = new ImageIcon(new ImageIcon(logoUrl).getImage().getScaledInstance(50, 50, Image.SCALE_SMOOTH));
+            logoLabel.setIcon(icon);
+            logoLabel.setText("<html>Apartment<br>Management<br>System</html>");
+            logoLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        } else {
+            logoLabel.setText("System Logo");
+            logoLabel.setFont(new Font("Segoe UI", Font.BOLD, 16));
+        }
+        logoPanel.add(logoLabel);
+        sidebar.add(logoPanel, BorderLayout.NORTH);
+
 
         JPanel navPanel = new JPanel();
         navPanel.setLayout(new BoxLayout(navPanel, BoxLayout.Y_AXIS));
@@ -633,38 +650,12 @@ public class OwnerDashboard extends JFrame implements ActionListener {
 
 
     private JPanel createProfitCard() {
-    JPanel card = createBaseCard("Profit");
+        JPanel card = createBaseCard("Profit");
 
-    // === FILTER BAR ===
-    JPanel filterBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-    filterBar.setOpaque(false);
-
-    // Years: you can adjust the range as needed
-    cbYear = new JComboBox<>(new String[]{"2024", "2025", "2026", "2027"});
-    cbYear.setSelectedItem(String.valueOf(LocalDate.now().getYear()));
-
-    // Months: "All" = whole year, or specific month numbers
-    cbMonth = new JComboBox<>(new String[]{
-        "All", "01", "02", "03", "04", "05", "06",
-        "07", "08", "09", "10", "11", "12"
-    });
-    cbMonth.setSelectedIndex(0); // All by default
-
-    JButton btnApply = createActionButton("APPLY", COLOR_BTN_ACTION);
-    btnApply.addActionListener(e -> refreshProfitCard());
-
-    filterBar.add(new JLabel("Year:"));
-    filterBar.add(cbYear);
-    filterBar.add(new JLabel("Month:"));
-    filterBar.add(cbMonth);
-    filterBar.add(btnApply);
-
-    card.add(filterBar, BorderLayout.NORTH);
-
-    // The actual content goes into CENTER – built by helper
-    card.add(buildProfitContent(), BorderLayout.CENTER);
-    return card;
-}
+        // The actual content goes into CENTER – built by helper
+        card.add(buildProfitContent(), BorderLayout.CENTER);
+        return card;
+    }
     
     // Rebuild the Profit card when filters change
 private void refreshProfitCard() {
@@ -993,7 +984,7 @@ private JPanel buildProfitContent() {
                 });
 
                 actionBtns.add(btnAccept); actionBtns.add(btnReject);
-                pnlViewings.add(createListItem(vName, vType + " for Room " + vRoom, "Date: " + vDate, actionBtns, 85));
+                pnlViewings.add(createListItem(vName, vType + " for Room " + vRoom, "Date: " + vDate, actionBtns, 125));
             }
         }
         
@@ -1041,7 +1032,7 @@ private JPanel buildProfitContent() {
                 });
 
                 actionBtns.add(btnAccept); actionBtns.add(btnReject);
-                pnlTenants.add(createListItem(tName, "Room: " + tRoom, "Requested: " + tDate, actionBtns, 85));
+                pnlTenants.add(createListItem(tName, "Room: " + tRoom, "Requested: " + tDate, actionBtns, 125));
             }
         }
         
@@ -1065,7 +1056,7 @@ private JPanel buildProfitContent() {
         } else {
             for(String[] t : activeTenants) {
                 int tId = Integer.parseInt(t[0]); String name = t[1]; String room = t[2]; String date = t[5];
-                list.add(createListItem(name, "Room " + room, "Joined: " + (date != null ? date : "N/A"), createTenantActions(tId, name, room), 80));
+                list.add(createListItem(name, "Room " + room, "Joined: " + (date != null ? date : "N/A"), createTenantActions(tId, name, room), 120));
             }
         }
 
@@ -1087,7 +1078,7 @@ private JPanel buildProfitContent() {
         btnView.setPreferredSize(new Dimension(80, 35));
         btnView.addActionListener(e -> showTenantDetailsPopup(tId));
         
-        JButton btnTrash = new JButton("🗑"); 
+        JButton btnTrash = new JButton("EVICT"); 
         btnTrash.setFont(new Font("Segoe UI", Font.PLAIN, 28)); btnTrash.setForeground(new Color(220, 60, 60)); btnTrash.setContentAreaFilled(false); btnTrash.setBorderPainted(false); btnTrash.setCursor(new Cursor(Cursor.HAND_CURSOR)); 
         if (!isViewOnly) btnTrash.addActionListener(e -> showDarkPopup("delete", tId, name, room)); 
         

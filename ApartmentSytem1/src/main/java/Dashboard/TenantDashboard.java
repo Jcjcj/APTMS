@@ -26,7 +26,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
 
     private CardLayout cardLayout;
     private JPanel cardsContainer;
-    private JButton btnSummary, btnExpenses, btnMaintenance, btnNotification, btnInquiry, btnHistory, btnLogout;
+    private JButton btnSummary, btnExpenses, btnMaintenance, btnNotification, btnInquiry, btnHistory, btnMyAccount, btnLogout;
     private JButton[] navButtons;
     private boolean isViewOnly = false;
 
@@ -35,7 +35,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
     private int currentTenantId; 
     private int currentApartmentId = -1; 
     private String currentRoom = "N/A"; 
-    private String tenantName = "New Tenant"; // Default fallback
+    private String tenantName = "Catriona Gray"; // Default fallback
     private String currentTenantUsername = "";
     private String currentApartmentName = "Apartment";
 
@@ -92,6 +92,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
         cardsContainer.add(createNotificationCard(), "Notification");
         cardsContainer.add(createInquiryCard(), "Inquiry");
         cardsContainer.add(createHistoryCard(), "History");
+        cardsContainer.add(createAccountCard(), "My Account");
 
         this.add(cardsContainer, BorderLayout.CENTER);
     }
@@ -381,6 +382,171 @@ public class TenantDashboard extends JFrame implements ActionListener {
         return card;
     }
 
+    private JPanel createAccountCard() {
+        JPanel card = createBaseCard("My Account");
+        JPanel grid = new JPanel(new GridLayout(1, 2, 40, 0));
+        grid.setOpaque(false);
+
+        String cName = "", cContact = "", cEmail = "", cEmerg = "";
+        String cAddress = "", cMoveIn = "", cUsername = "", cRoom = "", cApartment = "";
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(
+                     "SELECT t.name, t.contact_number, t.email, t.emergency_contact, t.address, " +
+                     "t.move_in_date, t.username, t.target_room_number, a.apartment_name " +
+                     "FROM registered_tenants t " +
+                     "LEFT JOIN apartments a ON t.target_apartment_id = a.apartment_id " +
+                     "WHERE t.tenant_id = ?")) {
+            ps.setInt(1, currentTenantId);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                cName = rs.getString("name");
+                cContact = rs.getString("contact_number");
+                cEmail = rs.getString("email");
+                cEmerg = rs.getString("emergency_contact");
+                cAddress = rs.getString("address");
+                cMoveIn = rs.getString("move_in_date");
+                cUsername = rs.getString("username");
+                cRoom = rs.getString("target_room_number");
+                cApartment = rs.getString("apartment_name");
+            }
+        } catch (Exception e) { e.printStackTrace(); }
+
+        com.mycompany.apartmentsytem1.TenantDAO tenantDao = new com.mycompany.apartmentsytem1.TenantDAO();
+        boolean canEditMoveIn = tenantDao.canEditMoveInDate(currentTenantId);
+
+        JPanel leftBox = createContainerBox();
+        leftBox.add(createSubHeader("Update Profile"));
+        leftBox.add(Box.createVerticalStrut(10));
+
+        JTextField txtName = createStandardDarkField(cName);
+        JTextField txtContact = createStandardDarkField(cContact);
+        JTextField txtEmail = createStandardDarkField(cEmail);
+        JTextField txtEmerg = createStandardDarkField(cEmerg);
+        JTextField txtAddress = createStandardDarkField(cAddress);
+        JTextField txtMoveIn = createStandardDarkField(cMoveIn != null ? cMoveIn : "");
+        txtMoveIn.setEditable(canEditMoveIn);
+        if (!canEditMoveIn) {
+            txtMoveIn.setBackground(new Color(40, 40, 40));
+            txtMoveIn.setToolTipText("Move-in date is locked because the move-in date has arrived or passed.");
+        }
+
+        leftBox.add(createFormGroup("Full Name", txtName));
+        leftBox.add(Box.createVerticalStrut(10));
+        leftBox.add(createFormGroup("Contact Number", txtContact));
+        leftBox.add(Box.createVerticalStrut(10));
+        leftBox.add(createFormGroup("Email Address", txtEmail));
+        leftBox.add(Box.createVerticalStrut(10));
+        leftBox.add(createFormGroup("Emergency Contact", txtEmerg));
+        leftBox.add(Box.createVerticalStrut(10));
+        leftBox.add(createFormGroup("Address", txtAddress));
+        leftBox.add(Box.createVerticalStrut(10));
+        leftBox.add(createFormGroup("Move-in Date (YYYY-MM-DD)", txtMoveIn));
+        leftBox.add(Box.createVerticalStrut(5));
+        leftBox.add(createLabel(
+                canEditMoveIn
+                        ? "You can change this only before your move-in date."
+                        : "Move-in date is locked because it has arrived or passed.",
+                12,
+                SwingConstants.LEFT,
+                Font.ITALIC
+        ));
+        leftBox.add(Box.createVerticalStrut(20));
+
+        JButton btnUpdateProfile = createActionButton("SAVE CHANGES", COLOR_BTN_ACTION);
+        if (isViewOnly) btnUpdateProfile.setEnabled(false);
+        btnUpdateProfile.addActionListener(e -> {
+            if (txtName.getText().trim().isEmpty() || txtContact.getText().trim().isEmpty() || txtEmail.getText().trim().isEmpty()) {
+                JOptionPane.showMessageDialog(this, "Name, contact number, and email are required.", "Missing Information", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+
+            if (canEditMoveIn && !txtMoveIn.getText().trim().isEmpty()) {
+                try {
+                    LocalDate.parse(txtMoveIn.getText().trim());
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(this, "Move-in date must use YYYY-MM-DD format.", "Invalid Date", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+            }
+
+            try {
+                boolean updatedProfile = tenantDao.updateTenantAccountProfile(
+                        currentTenantId,
+                        txtName.getText().trim(),
+                        txtContact.getText().trim(),
+                        txtEmail.getText().trim(),
+                        txtEmerg.getText().trim(),
+                        txtAddress.getText().trim(),
+                        txtMoveIn.getText().trim()
+                );
+
+                if (updatedProfile) {
+                    JOptionPane.showMessageDialog(this, "Profile securely updated!");
+                    refreshDashboard();
+                } else {
+                    JOptionPane.showMessageDialog(this, "No changes were saved. Please check your entries.", "Info", JOptionPane.INFORMATION_MESSAGE);
+                }
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "Error updating profile: " + ex.getMessage(), "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        leftBox.add(btnUpdateProfile);
+
+        JPanel rightBox = createContainerBox();
+        rightBox.add(createSubHeader("Registration Details"));
+        rightBox.add(Box.createVerticalStrut(10));
+
+        JTextField txtUsername = createStandardDarkField(cUsername);
+        txtUsername.setEditable(false);
+        JTextField txtApartment = createStandardDarkField(cApartment != null ? cApartment : currentApartmentName);
+        txtApartment.setEditable(false);
+        JTextField txtRoom = createStandardDarkField(cRoom != null ? cRoom : currentRoom);
+        txtRoom.setEditable(false);
+
+        rightBox.add(createFormGroup("Username", txtUsername));
+        rightBox.add(Box.createVerticalStrut(10));
+        rightBox.add(createFormGroup("Apartment", txtApartment));
+        rightBox.add(Box.createVerticalStrut(10));
+        rightBox.add(createFormGroup("Room Number", txtRoom));
+        rightBox.add(Box.createVerticalStrut(25));
+
+        rightBox.add(createSubHeader("Change Password"));
+        rightBox.add(Box.createVerticalStrut(10));
+
+        JPasswordField txtPass = new JPasswordField();
+        txtPass.setBackground(COLOR_DARK_BOX);
+        txtPass.setForeground(Color.WHITE);
+        txtPass.setCaretColor(Color.WHITE);
+        txtPass.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        txtPass.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
+        rightBox.add(createFormGroup("New Password", txtPass));
+        rightBox.add(Box.createVerticalStrut(20));
+
+        JButton btnChangePass = createActionButton("UPDATE PASSWORD", COLOR_BTN_ACTION);
+        if (isViewOnly) btnChangePass.setEnabled(false);
+        btnChangePass.addActionListener(e -> {
+            String newPass = new String(txtPass.getPassword());
+            if (newPass.length() >= 6) {
+                com.mycompany.apartmentsytem1.TenantDAO tDao = new com.mycompany.apartmentsytem1.TenantDAO();
+                if (tDao.changePassword(currentTenantId, newPass)) {
+                    JOptionPane.showMessageDialog(this, "Password securely updated.");
+                    txtPass.setText("");
+                } else {
+                    JOptionPane.showMessageDialog(this, "Failed to update password.", "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            } else {
+                JOptionPane.showMessageDialog(this, "Password must be at least 6 characters.");
+            }
+        });
+        rightBox.add(btnChangePass);
+        rightBox.add(Box.createVerticalGlue());
+
+        grid.add(leftBox);
+        grid.add(rightBox);
+        card.add(grid, BorderLayout.CENTER);
+        return card;
+    }
+
     // ======================================================================================
     // HELPER METHODS FOR UI CONSTRUCTION
     // ======================================================================================
@@ -449,6 +615,27 @@ public class TenantDashboard extends JFrame implements ActionListener {
             public void focusGained(java.awt.event.FocusEvent evt) { if (t.getText().equals(placeholder)) t.setText(""); }
             public void focusLost(java.awt.event.FocusEvent evt) { if (t.getText().isEmpty()) t.setText(placeholder); }
         });
+        return t;
+    }
+
+    private JPanel createFormGroup(String label, JComponent field) {
+        JPanel p = new JPanel(new BorderLayout());
+        p.setOpaque(false);
+        p.setMaximumSize(new Dimension(Integer.MAX_VALUE, 65));
+        JLabel l = createLabel(label, 14, SwingConstants.LEFT, Font.BOLD);
+        l.setBorder(BorderFactory.createEmptyBorder(0, 0, 5, 0));
+        p.add(l, BorderLayout.NORTH);
+        p.add(field, BorderLayout.CENTER);
+        return p;
+    }
+
+    private JTextField createStandardDarkField(String text) {
+        JTextField t = new JTextField(text);
+        t.setBackground(COLOR_DARK_BOX);
+        t.setForeground(Color.WHITE);
+        t.setCaretColor(Color.WHITE);
+        t.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        t.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
         return t;
     }
 
@@ -530,8 +717,9 @@ public class TenantDashboard extends JFrame implements ActionListener {
         btnNotification = createNavButton("Notification"); 
         btnInquiry = createNavButton("Inquiry"); 
         btnHistory = createNavButton("History");
+        btnMyAccount = createNavButton("My Account");
         
-        navButtons = new JButton[]{btnSummary, btnExpenses, btnMaintenance, btnNotification, btnInquiry, btnHistory};
+        navButtons = new JButton[]{btnSummary, btnExpenses, btnMaintenance, btnNotification, btnInquiry, btnHistory, btnMyAccount};
         for (JButton btn : navButtons) { 
             navPanel.add(btn); 
             navPanel.add(Box.createVerticalStrut(5)); 
@@ -584,6 +772,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
         else if (source == btnNotification) cardLayout.show(cardsContainer, "Notification");
         else if (source == btnInquiry) cardLayout.show(cardsContainer, "Inquiry");
         else if (source == btnHistory) cardLayout.show(cardsContainer, "History");
+        else if (source == btnMyAccount) cardLayout.show(cardsContainer, "My Account");
     }
     
     // ======================================================================================

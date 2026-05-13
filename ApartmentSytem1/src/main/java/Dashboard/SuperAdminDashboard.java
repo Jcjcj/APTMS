@@ -1,6 +1,7 @@
 package Dashboard;
 
 import com.mycompany.apartmentsytem1.SuperAdminDAO;
+import com.mycompany.apartmentsytem1.FileStorageUtil;
 import main.LandingPage;
 
 import javax.swing.*;
@@ -8,6 +9,7 @@ import javax.swing.border.EmptyBorder;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.io.File;
 import java.net.URL;
 import java.util.List;
 
@@ -364,14 +366,29 @@ public class SuperAdminDashboard extends JFrame implements ActionListener {
         JLabel lblTitle = new JLabel("Payment Verification"); lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 22)); lblTitle.setForeground(Color.WHITE); lblTitle.setAlignmentX(Component.CENTER_ALIGNMENT); panel.add(lblTitle);
         panel.add(Box.createVerticalStrut(20));
 
+        // --- BUG FIX: Parse the massive database string to extract clean values ---
+        String cleanMethod = method != null ? method : "Bank Transfer";
+        String cleanRef = "REF-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        
+        if (cleanMethod.contains("(Ref:")) {
+            try {
+                // Extract the reference number trapped between "(Ref: " and ")"
+                int refStart = cleanMethod.indexOf("(Ref: ") + 6;
+                int refEnd = cleanMethod.indexOf(")", refStart);
+                if (refStart > 5 && refEnd > refStart) {
+                    cleanRef = cleanMethod.substring(refStart, refEnd);
+                }
+                // Keep only the text before "(Ref:" as the clean payment method
+                cleanMethod = cleanMethod.substring(0, cleanMethod.indexOf("(Ref:")).trim();
+            } catch (Exception e) {}
+        }
+        // -------------------------------------------------------------------------
+
         panel.add(createPopupDetailRow("Apartment:", aptName));
         panel.add(createPopupDetailRow("TIN Number:", tin != null ? tin : "Not Provided"));
-        panel.add(createPopupDetailRow("Payment Method:", method != null ? method : "Bank Transfer"));
+        panel.add(createPopupDetailRow("Payment Method:", cleanMethod));
         panel.add(createPopupDetailRow("Transaction Date:", date));
-        
-        // Mock Reference Number generator for visual completeness
-        String ref = "REF-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        panel.add(createPopupDetailRow("Reference No.:", ref));
+        panel.add(createPopupDetailRow("Reference No.:", cleanRef));
 
         panel.add(Box.createVerticalStrut(30));
         JButton btnClose = createActionButton("CLOSE", new Color(150, 150, 150)); btnClose.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -382,10 +399,25 @@ public class SuperAdminDashboard extends JFrame implements ActionListener {
     }
 
     private JPanel createPopupDetailRow(String label, String value) {
-        JPanel row = new JPanel(new BorderLayout()); row.setOpaque(false); row.setMaximumSize(new Dimension(400, 30));
-        JLabel lbl = new JLabel(label); lbl.setForeground(Color.LIGHT_GRAY); lbl.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        JLabel val = new JLabel(value); val.setForeground(Color.WHITE); val.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        row.add(lbl, BorderLayout.WEST); row.add(val, BorderLayout.EAST);
+        JPanel row = new JPanel(new BorderLayout()); 
+        row.setOpaque(false); 
+        
+        // --- BUG FIX: Increased width to 500 to prevent text overlapping ---
+        row.setMaximumSize(new Dimension(500, 30)); 
+        
+        JLabel lbl = new JLabel(label); 
+        lbl.setForeground(Color.LIGHT_GRAY); 
+        lbl.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        // --- BUG FIX: Fixed label width ensures perfect column alignment ---
+        lbl.setPreferredSize(new Dimension(140, 30)); 
+        
+        JLabel val = new JLabel(value); 
+        val.setForeground(Color.WHITE); 
+        val.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        val.setHorizontalAlignment(SwingConstants.RIGHT); // Aligns values nicely to the right
+        
+        row.add(lbl, BorderLayout.WEST); 
+        row.add(val, BorderLayout.CENTER);
         return row;
     }
 
@@ -547,14 +579,251 @@ public class SuperAdminDashboard extends JFrame implements ActionListener {
     }
 
     private void showRegistrationDetails(int apartmentId) {
-        JTextArea details = new JTextArea(dao.getFullRegistrationDetails(apartmentId));
-        details.setEditable(false);
-        details.setLineWrap(true);
-        details.setWrapStyleWord(true);
-        details.setCaretPosition(0);
-        JScrollPane scrollPane = new JScrollPane(details);
-        scrollPane.setPreferredSize(new Dimension(700, 500));
-        JOptionPane.showMessageDialog(this, scrollPane, "Registration Details", JOptionPane.INFORMATION_MESSAGE);
+        String[] details = dao.getOwnerRegistrationDetailsForReview(apartmentId);
+        if (details == null) {
+            showThemedMessage("Owner Registration Details", "Unable to load owner registration details.");
+            return;
+        }
+
+        JDialog dialog = new JDialog(this, "Owner Registration Details", true);
+        dialog.setUndecorated(true);
+        dialog.getContentPane().setBackground(COLOR_LIST_ITEM);
+
+        JPanel shell = new JPanel(new BorderLayout(0, 18));
+        shell.setBackground(COLOR_LIST_ITEM);
+        shell.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(COLOR_CONTAINER, 2),
+                BorderFactory.createEmptyBorder(24, 28, 24, 28)
+        ));
+
+        JPanel header = new JPanel(new BorderLayout());
+        header.setOpaque(false);
+
+        JLabel title = new JLabel("Owner Registration Details");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 24));
+        title.setForeground(COLOR_TEXT);
+        header.add(title, BorderLayout.WEST);
+
+        JButton btnClose = createActionButton("CLOSE", new Color(150, 150, 150));
+        btnClose.addActionListener(e -> dialog.dispose());
+        header.add(btnClose, BorderLayout.EAST);
+        shell.add(header, BorderLayout.NORTH);
+
+        JPanel content = new JPanel(new GridLayout(1, 2, 24, 0));
+        content.setOpaque(false);
+
+        JPanel detailsPanel = new JPanel();
+        detailsPanel.setLayout(new BoxLayout(detailsPanel, BoxLayout.Y_AXIS));
+        detailsPanel.setBackground(COLOR_CONTAINER);
+        detailsPanel.setBorder(BorderFactory.createEmptyBorder(18, 18, 18, 18));
+
+        detailsPanel.add(createProfileSectionLabel("Owner Details"));
+        detailsPanel.add(createProfileDetailRow("Name", details[0]));
+        detailsPanel.add(createProfileDetailRow("Username", details[5]));
+        detailsPanel.add(createProfileDetailRow("Contact Number", details[1]));
+        detailsPanel.add(createProfileDetailRow("Email", details[2]));
+        detailsPanel.add(createProfileDetailRow("Address", details[3]));
+        detailsPanel.add(createProfileDetailRow("Emergency Contact", details[4]));
+        detailsPanel.add(createProfileDetailRow("GCash Number", details[6]));
+        detailsPanel.add(createProfileDetailRow("GCash Name", details[7]));
+        detailsPanel.add(createProfileDetailRow("Paymaya Number", details[8]));
+        detailsPanel.add(createProfileDetailRow("Paymaya Name", details[9]));
+
+        detailsPanel.add(Box.createVerticalStrut(8));
+        detailsPanel.add(createProfileSectionLabel("Apartment Details"));
+        detailsPanel.add(createProfileDetailRow("Apartment Name", details[11]));
+        detailsPanel.add(createProfileDetailRow("Apartment Code", details[12]));
+        detailsPanel.add(createProfileDetailRow("TIN Number", details[13]));
+        detailsPanel.add(createProfileDetailRow("Barangay", details[23]));
+        detailsPanel.add(createProfileDetailRow("Street", details[24]));
+        detailsPanel.add(createProfileDetailRow("Floors", details[14]));
+        detailsPanel.add(createProfileDetailRow("Total Rooms", details[15]));
+        detailsPanel.add(createProfileDetailRow("Rooms Available", details[16]));
+        detailsPanel.add(createProfileDetailRow("Capital", details[17]));
+        detailsPanel.add(createProfileDetailRow("Tax Rate", details[18]));
+        detailsPanel.add(createProfileDetailRow("Penalty Rate", details[19]));
+        detailsPanel.add(createProfileDetailRow("Payment Method", details[20]));
+        detailsPanel.add(createProfileDetailRow("Apartment Contact", details[31]));
+        detailsPanel.add(createProfileDetailRow("Apartment Email", details[32]));
+        detailsPanel.add(createProfileDetailRow("Apartment Emergency", details[33]));
+        detailsPanel.add(createProfileDetailRow("Approval Status", details[34]));
+        detailsPanel.add(createProfileDetailRow("Rejection Reason", details[35]));
+        detailsPanel.add(createProfileDetailRow("Next Billing Date", details[36]));
+
+        detailsPanel.add(Box.createVerticalStrut(8));
+        detailsPanel.add(createProfileSectionLabel("Utilities"));
+        detailsPanel.add(createProfileDetailRow("Electricity", safeText(details[25]) + " | Rate: " + safeText(details[26])));
+        detailsPanel.add(createProfileDetailRow("Water", safeText(details[27]) + " | Rate: " + safeText(details[28])));
+        detailsPanel.add(createProfileDetailRow("Internet", safeText(details[29]) + " | Rate: " + safeText(details[30])));
+
+        detailsPanel.add(Box.createVerticalStrut(8));
+        detailsPanel.add(createProfileSectionLabel("Description"));
+        detailsPanel.add(createProfileTextBlock(details[21]));
+        detailsPanel.add(Box.createVerticalStrut(8));
+        detailsPanel.add(createProfileSectionLabel("Policy"));
+        detailsPanel.add(createProfileTextBlock(details[22]));
+
+        JScrollPane detailsScroll = new JScrollPane(detailsPanel);
+        detailsScroll.setBorder(null);
+        detailsScroll.setOpaque(false);
+        detailsScroll.getViewport().setOpaque(false);
+
+        content.add(detailsScroll);
+        content.add(createValidIdPreview(details[10]));
+        shell.add(content, BorderLayout.CENTER);
+
+        dialog.add(shell);
+        dialog.setPreferredSize(new Dimension(980, 600));
+        dialog.pack();
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+
+    private JLabel createProfileSectionLabel(String text) {
+        JLabel label = new JLabel(text);
+        label.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        label.setForeground(COLOR_TEXT);
+        label.setBorder(BorderFactory.createEmptyBorder(4, 0, 10, 0));
+        label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return label;
+    }
+
+    private JPanel createProfileDetailRow(String label, String value) {
+        JPanel row = new JPanel(new BorderLayout(12, 0));
+        row.setOpaque(false);
+        row.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+        row.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel lblKey = new JLabel(label + ":");
+        lblKey.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        lblKey.setForeground(COLOR_TEXT);
+        lblKey.setPreferredSize(new Dimension(155, 24));
+
+        JLabel lblValue = new JLabel(safeText(value));
+        lblValue.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        lblValue.setForeground(COLOR_TEXT);
+        lblValue.setVerticalAlignment(SwingConstants.TOP);
+
+        row.add(lblKey, BorderLayout.WEST);
+        row.add(lblValue, BorderLayout.CENTER);
+        return row;
+    }
+
+    private JTextArea createProfileTextBlock(String value) {
+        JTextArea text = new JTextArea(safeText(value));
+        text.setOpaque(false);
+        text.setEditable(false);
+        text.setLineWrap(true);
+        text.setWrapStyleWord(true);
+        text.setForeground(COLOR_TEXT);
+        text.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        text.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+        text.setAlignmentX(Component.LEFT_ALIGNMENT);
+        return text;
+    }
+
+    private JPanel createValidIdPreview(String validIdPath) {
+        JPanel panel = new JPanel(new BorderLayout(0, 12));
+        panel.setBackground(COLOR_CONTAINER);
+        panel.setBorder(BorderFactory.createEmptyBorder(18, 18, 18, 18));
+
+        JLabel title = new JLabel("Owner Valid ID");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        title.setForeground(COLOR_TEXT);
+        panel.add(title, BorderLayout.NORTH);
+
+        JLabel imageLabel = new JLabel("", SwingConstants.CENTER);
+        imageLabel.setOpaque(true);
+        imageLabel.setBackground(COLOR_LIST_ITEM);
+        imageLabel.setForeground(Color.LIGHT_GRAY);
+        imageLabel.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        imageLabel.setBorder(BorderFactory.createLineBorder(new Color(0, 140, 70), 1));
+
+        File idFile = resolveUploadedFile(validIdPath);
+        if (idFile != null) {
+            ImageIcon icon = new ImageIcon(idFile.getAbsolutePath());
+            if (icon.getIconWidth() > 0 && icon.getIconHeight() > 0) {
+                imageLabel.setIcon(scaleIcon(icon, 360, 390));
+                imageLabel.setText("");
+                imageLabel.setToolTipText(idFile.getAbsolutePath());
+            } else {
+                imageLabel.setText("Unable to preview this ID image.");
+            }
+        } else {
+            imageLabel.setText("No valid ID image found.");
+        }
+
+        panel.add(imageLabel, BorderLayout.CENTER);
+        return panel;
+    }
+
+    private ImageIcon scaleIcon(ImageIcon icon, int maxWidth, int maxHeight) {
+        double widthRatio = maxWidth / (double) icon.getIconWidth();
+        double heightRatio = maxHeight / (double) icon.getIconHeight();
+        double scale = Math.min(widthRatio, heightRatio);
+        int width = Math.max(1, (int) Math.round(icon.getIconWidth() * scale));
+        int height = Math.max(1, (int) Math.round(icon.getIconHeight() * scale));
+        Image scaled = icon.getImage().getScaledInstance(width, height, Image.SCALE_SMOOTH);
+        return new ImageIcon(scaled);
+    }
+
+    private File resolveUploadedFile(String storedPath) {
+        if (storedPath == null || storedPath.trim().isEmpty() || "no_id.png".equalsIgnoreCase(storedPath.trim())) {
+            return null;
+        }
+
+        File direct = new File(storedPath.trim());
+        if (direct.exists() && direct.isFile()) return direct;
+
+        File base = new File(System.getProperty("user.dir"));
+        while (base != null) {
+            File relativeFile = new File(base, storedPath.trim());
+            if (relativeFile.exists() && relativeFile.isFile()) return relativeFile;
+
+            File uploadFile = new File(new File(base, FileStorageUtil.getUploadPath()), storedPath.trim());
+            if (uploadFile.exists() && uploadFile.isFile()) return uploadFile;
+            base = base.getParentFile();
+        }
+
+        return null;
+    }
+
+    private void showThemedMessage(String title, String message) {
+        JDialog dialog = new JDialog(this, title, true);
+        dialog.setUndecorated(true);
+
+        JPanel panel = new JPanel(new BorderLayout(0, 16));
+        panel.setBackground(COLOR_LIST_ITEM);
+        panel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(COLOR_CONTAINER, 2),
+                BorderFactory.createEmptyBorder(24, 28, 24, 28)
+        ));
+
+        JLabel lblTitle = new JLabel(title);
+        lblTitle.setFont(new Font("Segoe UI", Font.BOLD, 22));
+        lblTitle.setForeground(COLOR_TEXT);
+        panel.add(lblTitle, BorderLayout.NORTH);
+
+        JLabel lblMessage = new JLabel(message);
+        lblMessage.setFont(new Font("Segoe UI", Font.PLAIN, 15));
+        lblMessage.setForeground(COLOR_TEXT);
+        panel.add(lblMessage, BorderLayout.CENTER);
+
+        JButton btnClose = createActionButton("CLOSE", new Color(150, 150, 150));
+        btnClose.addActionListener(e -> dialog.dispose());
+        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        btnRow.setOpaque(false);
+        btnRow.add(btnClose);
+        panel.add(btnRow, BorderLayout.SOUTH);
+
+        dialog.add(panel);
+        dialog.pack();
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+
+    private String safeText(String value) {
+        return value != null && !value.isBlank() ? value : "N/A";
     }
 
     private JPanel createPublishActionButtons(boolean activeGreen) {
