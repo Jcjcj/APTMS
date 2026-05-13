@@ -5,8 +5,6 @@ public class FinanceService {
     private ProfitDAO profitDao = new ProfitDAO();
     private ExpenseDAO expenseDao = new ExpenseDAO();
     
-    private static final double TAX_RATE = 0.12; // 12% tax
-
     // Object to hold all the monthly numbers for your UI
     public static class MonthlyReport {
         public double revenue;
@@ -23,6 +21,8 @@ public class FinanceService {
         public double totalRevenue;
         public double totalExpenses;
         public double grossProfit;
+        public double taxDeduction;
+        public double netProfit;
         public double capital;
         public double roiPercentage;
     }
@@ -34,10 +34,11 @@ public class FinanceService {
         report.revenue = profitDao.getMonthlyRevenue(apartmentId, month);
         report.buildingExpenses = expenseDao.getBuildingExpensesOnly(apartmentId, month);
         report.roomExpenses = expenseDao.getRoomExpensesOnly(apartmentId, month);
+        double taxRate = profitDao.getTaxRate(apartmentId);
         
         report.totalExpenses = report.buildingExpenses + report.roomExpenses;
         report.grossProfit = report.revenue - report.totalExpenses;
-        report.taxDeduction = report.grossProfit > 0 ? (report.grossProfit * TAX_RATE) : 0.0;
+        report.taxDeduction = report.grossProfit > 0 ? (report.grossProfit * taxRate) : 0.0;
         report.netProfit = report.grossProfit - report.taxDeduction;
 
         return report;
@@ -56,6 +57,9 @@ public class FinanceService {
         report.totalExpenses = bldgExp + roomExp;
 
         report.grossProfit = report.totalRevenue - report.totalExpenses;
+        double taxRate = profitDao.getTaxRate(apartmentId);
+        report.taxDeduction = report.grossProfit > 0 ? (report.grossProfit * taxRate) : 0.0;
+        report.netProfit = report.grossProfit - report.taxDeduction;
         report.capital = profitDao.getCapitalTotal(apartmentId);
         
         report.roiPercentage = report.capital > 0 ? (report.grossProfit / report.capital) * 100 : 0.0;

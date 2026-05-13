@@ -148,7 +148,7 @@ public class SuperAdminDAO {
                    "Total Rooms: " + rs.getInt("total_rooms") + "\n" +
                    "Rooms Available: " + rs.getInt("rooms_available") + "\n" +
                    "Capital: PHP " + String.format("%,.2f", rs.getDouble("capital")) + "\n" +
-                   "Tax Rate: " + String.format("%.2f%%", rs.getDouble("tax_rate") * 100.0) + "\n" +
+                   "Tax Rate: " + String.format("%.2f%%", normalizeTaxRate(rs.getDouble("tax_rate")) * 100.0) + "\n" +
                    "Penalty Rate: " + String.format("%.2f%%", rs.getDouble("penalty_rate") * 100.0) + "\n" +
                    "Payment Method: " + safe(rs.getString("payment_method")) + "\n" +
                    "Barangay: " + safe(rs.getString("barangay")) + "\n" +
@@ -169,7 +169,7 @@ public class SuperAdminDAO {
             return "Error loading registration details: " + e.getMessage();
         }
     }
-    
+
     public String[] getOwnerRegistrationDetailsForReview(int apartmentId) {
         String sql = "SELECT " +
                      "o.name AS owner_name, o.contact_number AS owner_contact, o.email AS owner_email, " +
@@ -206,7 +206,7 @@ public class SuperAdminDAO {
                     String.valueOf(rs.getInt("total_rooms")),
                     String.valueOf(rs.getInt("rooms_available")),
                     "PHP " + String.format("%,.2f", rs.getDouble("capital")),
-                    String.format("%.2f%%", rs.getDouble("tax_rate") * 100.0),
+                    String.format("%.2f%%", normalizeTaxRate(rs.getDouble("tax_rate")) * 100.0),
                     String.format("%.2f%%", rs.getDouble("penalty_rate") * 100.0),
                     rs.getString("payment_method"),
                     rs.getString("description"),
@@ -326,6 +326,13 @@ public class SuperAdminDAO {
     private String safe(String value) {
         return value != null && !value.isBlank() ? value : "N/A";
     }
+
+    private double normalizeTaxRate(double taxRate) {
+        if (taxRate <= 0.0 || Math.abs(taxRate - 0.02) < 0.000001) {
+            return 0.12;
+        }
+        return taxRate;
+    }
     
     // Pulls the list of apartments for the Billing Tab overview
     public List<String[]> getBillingOverview() {
@@ -395,11 +402,15 @@ public class SuperAdminDAO {
     public double[] getFinancialProjections(int apartmentId) {
         // We let SQL do all the math using SUM() and basic multiplication
         String sql = "SELECT " +
-                     "SUM(rent_amount) AS gross_income, " +
-                     "SUM(rent_amount * 0.02) AS platform_fee, " +
-                     "SUM(rent_amount * 0.98) AS net_profit " +
-                     "FROM rooms " +
-                     "WHERE apartment_id = ?";
+                     "SUM(COALESCE(rb.rent_amount, r.rent_amount)) AS gross_income, " +
+                     "SUM(COALESCE(rb.rent_amount, r.rent_amount) * 0.02) AS platform_fee, " +
+                     "SUM(COALESCE(rb.rent_amount, r.rent_amount) * 0.98) AS net_profit " +
+                     "FROM rooms r " +
+                     "LEFT JOIN room_bills rb ON rb.bill_id = (" +
+                     "    SELECT MAX(rb2.bill_id) FROM room_bills rb2 " +
+                     "    WHERE rb2.room_number = r.room_number AND rb2.apartment_id = r.apartment_id" +
+                     ") " +
+                     "WHERE r.apartment_id = ?";
                      
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -430,11 +441,15 @@ public class SuperAdminDAO {
         // FIXED: Removed the "AND r.status = 'Occupied'" filter so it counts ALL registered rooms!
         String sql = "SELECT a.apartment_id, a.apartment_name, o.name AS owner_name, o.contact_number, " +
                      "COUNT(r.room_number) AS active_rooms, " +
-                     "COALESCE(SUM(r.rent_amount * 0.02), 0) AS total_fee, " +
+                     "COALESCE(SUM(COALESCE(rb.rent_amount, r.rent_amount) * 0.02), 0) AS total_fee, " +
                      "a.next_billing_date, a.approval_status, a.tin_no, a.payment_method " +
                      "FROM apartments a " +
                      "JOIN owners o ON a.owner_id = o.owner_id " +
                      "LEFT JOIN rooms r ON a.apartment_id = r.apartment_id " +
+                     "LEFT JOIN room_bills rb ON rb.bill_id = (" +
+                     "    SELECT MAX(rb2.bill_id) FROM room_bills rb2 " +
+                     "    WHERE rb2.room_number = r.room_number AND rb2.apartment_id = r.apartment_id" +
+                     ") " +
                      "GROUP BY a.apartment_id";
                      
         try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {

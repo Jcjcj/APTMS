@@ -68,7 +68,10 @@ public class TenantDashboardDAO {
                      "COALESCE(" + latestPenalty + ", 0.0) as penalty_amt " +
                      "FROM rooms r " +
                      "JOIN apartments a ON r.apartment_id = a.apartment_id " +
-                     "LEFT JOIN room_bills rb ON r.room_number = rb.room_number AND r.apartment_id = rb.apartment_id " +
+                     "LEFT JOIN room_bills rb ON rb.bill_id = (" +
+                     "    SELECT MAX(rb2.bill_id) FROM room_bills rb2 " +
+                     "    WHERE rb2.room_number = r.room_number AND rb2.apartment_id = r.apartment_id" +
+                     ") " +
                      "WHERE r.apartment_id = ? AND r.room_number = ?";
         
         try (Connection conn = DBConnection.connect();
@@ -217,7 +220,7 @@ public class TenantDashboardDAO {
             ps.setInt(1, tenantId);
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
-                list.add("Month: " + rs.getString("month") + " | PHP " + rs.getDouble("total") + " | Paid: " + rs.getString("payment_date"));
+                list.add("Month: " + rs.getString("month") + " | PHP " + String.format("%,.2f", rs.getDouble("total")) + " | Paid: " + rs.getString("payment_date"));
             }
         } catch (Exception e) { LOGGER.severe("Tenant Bill History Error: " + e.getMessage()); }
         return list;

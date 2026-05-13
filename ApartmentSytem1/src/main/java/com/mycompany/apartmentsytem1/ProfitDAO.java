@@ -70,4 +70,30 @@ public class ProfitDAO {
         }
         return capital;
     }
+
+    public double getTaxRate(int apartmentId) {
+        double taxRate = 0.12;
+        String sql = "SELECT tax_rate FROM apartments WHERE apartment_id = ?";
+
+        try (Connection conn = DBConnection.connect();
+             PreparedStatement ps = conn.prepareStatement(sql)) {
+
+            ps.setInt(1, apartmentId);
+            ResultSet rs = ps.executeQuery();
+
+            if (rs.next()) {
+                taxRate = normalizeTaxRate(rs.getDouble("tax_rate"));
+            }
+        } catch (Exception e) {
+            System.out.println("Tax Rate Retrieval Error: " + e.getMessage());
+        }
+        return taxRate;
+    }
+
+    private double normalizeTaxRate(double taxRate) {
+        if (taxRate <= 0.0 || Math.abs(taxRate - 0.02) < 0.000001) {
+            return 0.12;
+        }
+        return taxRate;
+    }
 }

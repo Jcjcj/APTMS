@@ -165,6 +165,7 @@ public class DatabaseSetup {
                     + "bill_id INTEGER PRIMARY KEY AUTOINCREMENT, "
                     + "tenant_id INTEGER, "
                     + "apartment_id INTEGER, "
+                    + "room_number TEXT, "
                     + "month TEXT, "
                     + "rent REAL DEFAULT 0.0, "
                     + "electricity REAL DEFAULT 0.0, "
@@ -182,6 +183,7 @@ public class DatabaseSetup {
                     + "penalty_applied_at TEXT, "
                     + "FOREIGN KEY(apartment_id) REFERENCES apartments(apartment_id), "
                     + "FOREIGN KEY(tenant_id) REFERENCES registered_tenants(tenant_id))");
+            addColumnIfMissing(stmt, "bills", "room_number", "TEXT");
             
             // TENANT HISTORY TABLE
             stmt.execute("CREATE TABLE IF NOT EXISTS tenant_history ("

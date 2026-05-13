@@ -124,6 +124,7 @@ public class OwnerDashboard extends JFrame implements ActionListener {
 
     private JPanel createSidebar() {
         JPanel sidebar = new JPanel(new BorderLayout());
+        sidebar.setPreferredSize(new Dimension(250, 0));
         sidebar.setMaximumSize(new Dimension(250, 0));
         sidebar.setBackground(COLOR_SIDEBAR);
 
@@ -144,7 +145,6 @@ public class OwnerDashboard extends JFrame implements ActionListener {
         }
         logoPanel.add(logoLabel);
         sidebar.add(logoPanel, BorderLayout.NORTH);
-
 
         JPanel navPanel = new JPanel();
         navPanel.setLayout(new BoxLayout(navPanel, BoxLayout.Y_AXIS));
@@ -352,7 +352,7 @@ public class OwnerDashboard extends JFrame implements ActionListener {
 
         btnSave.addActionListener(e -> {
             try {
-                double amount = Double.parseDouble(txtAmt.getText().replace(",", "").trim());
+                double amount = parseMoney(txtAmt.getText());
                 String cat    = txtCat.getText().trim();
                 String date   = txtDate.getText().trim();
                 String month  = txtMonth.getText().trim();
@@ -423,7 +423,7 @@ public class OwnerDashboard extends JFrame implements ActionListener {
         List<String[]> activeRooms = ownerDao.getActiveRoomsForServiceFee(currentApartmentId);
         
         if (activeRooms.isEmpty()) {
-            JLabel empty = createLabel("No active rooms.", 16, SwingConstants.CENTER);
+            JLabel empty = createLabel("No rooms listed.", 16, SwingConstants.CENTER);
             empty.setBorder(BorderFactory.createEmptyBorder(20,0,0,0));
             tableContainer.add(empty);
         } else {
@@ -650,12 +650,38 @@ public class OwnerDashboard extends JFrame implements ActionListener {
 
 
     private JPanel createProfitCard() {
-        JPanel card = createBaseCard("Profit");
+    JPanel card = createBaseCard("Profit");
 
-        // The actual content goes into CENTER – built by helper
-        card.add(buildProfitContent(), BorderLayout.CENTER);
-        return card;
-    }
+    // === FILTER BAR ===
+    JPanel filterBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+    filterBar.setOpaque(false);
+
+    // Years: you can adjust the range as needed
+    cbYear = new JComboBox<>(new String[]{"2024", "2025", "2026", "2027"});
+    cbYear.setSelectedItem(String.valueOf(LocalDate.now().getYear()));
+
+    // Months: "All" = whole year, or specific month numbers
+    cbMonth = new JComboBox<>(new String[]{
+        "All", "01", "02", "03", "04", "05", "06",
+        "07", "08", "09", "10", "11", "12"
+    });
+    cbMonth.setSelectedIndex(0); // All by default
+
+    JButton btnApply = createActionButton("APPLY", COLOR_BTN_ACTION);
+    btnApply.addActionListener(e -> refreshProfitCard());
+
+    filterBar.add(new JLabel("Year:"));
+    filterBar.add(cbYear);
+    filterBar.add(new JLabel("Month:"));
+    filterBar.add(cbMonth);
+    filterBar.add(btnApply);
+
+    card.add(filterBar, BorderLayout.NORTH);
+
+    // The actual content goes into CENTER – built by helper
+    card.add(buildProfitContent(), BorderLayout.CENTER);
+    return card;
+}
     
     // Rebuild the Profit card when filters change
 private void refreshProfitCard() {
@@ -715,8 +741,7 @@ private JPanel buildProfitContent() {
 
     JPanel annuallyBox = createContainerBox();
     annuallyBox.add(createSubHeader("Annual Net Profit (" + year + ")"));
-    double annualNet = annual.grossProfit - (annual.grossProfit > 0 ? annual.grossProfit * 0.12 : 0);
-    annuallyBox.add(createLabel("₱ " + String.format("%,.2f", annualNet), 50, SwingConstants.LEFT, Font.BOLD));
+    annuallyBox.add(createLabel("₱ " + String.format("%,.2f", annual.netProfit), 50, SwingConstants.LEFT, Font.BOLD));
     rightCol.add(annuallyBox);
 
     content.add(leftCol);
@@ -773,10 +798,10 @@ private JPanel buildProfitContent() {
             boolean success = true;
             for (int i = 0; i < roomNumbersList.size(); i++) {
                 String rNum = roomNumbersList.get(i);
-                double rRent = Double.parseDouble(rentFields.get(i).getText().isEmpty() ? "0" : rentFields.get(i).getText());
-                double rElec = Double.parseDouble(elecFields.get(i).getText().isEmpty() ? "0" : elecFields.get(i).getText());
-                double rWat = Double.parseDouble(waterFields.get(i).getText().isEmpty() ? "0" : waterFields.get(i).getText());
-                double rNet = Double.parseDouble(netFields.get(i).getText().isEmpty() ? "0" : netFields.get(i).getText());
+                double rRent = parseMoney(rentFields.get(i).getText());
+                double rElec = parseMoney(elecFields.get(i).getText());
+                double rWat = parseMoney(waterFields.get(i).getText());
+                double rNet = parseMoney(netFields.get(i).getText());
                 
                 if (!ownerDao.updateRoomUtilities(currentApartmentId, rNum, rRent, rElec, rWat, rNet)) {
                     success = false;
@@ -984,7 +1009,7 @@ private JPanel buildProfitContent() {
                 });
 
                 actionBtns.add(btnAccept); actionBtns.add(btnReject);
-                pnlViewings.add(createListItem(vName, vType + " for Room " + vRoom, "Date: " + vDate, actionBtns, 125));
+                pnlViewings.add(createListItem(vName, vType + " for Room " + vRoom, "Date: " + vDate, actionBtns, 85));
             }
         }
         
@@ -1032,7 +1057,7 @@ private JPanel buildProfitContent() {
                 });
 
                 actionBtns.add(btnAccept); actionBtns.add(btnReject);
-                pnlTenants.add(createListItem(tName, "Room: " + tRoom, "Requested: " + tDate, actionBtns, 125));
+                pnlTenants.add(createListItem(tName, "Room: " + tRoom, "Requested: " + tDate, actionBtns, 85));
             }
         }
         
@@ -1056,7 +1081,7 @@ private JPanel buildProfitContent() {
         } else {
             for(String[] t : activeTenants) {
                 int tId = Integer.parseInt(t[0]); String name = t[1]; String room = t[2]; String date = t[5];
-                list.add(createListItem(name, "Room " + room, "Joined: " + (date != null ? date : "N/A"), createTenantActions(tId, name, room), 120));
+                list.add(createListItem(name, "Room " + room, "Joined: " + (date != null ? date : "N/A"), createTenantActions(tId, name, room), 80));
             }
         }
 
@@ -1078,7 +1103,7 @@ private JPanel buildProfitContent() {
         btnView.setPreferredSize(new Dimension(80, 35));
         btnView.addActionListener(e -> showTenantDetailsPopup(tId));
         
-        JButton btnTrash = new JButton("EVICT"); 
+        JButton btnTrash = new JButton("🗑"); 
         btnTrash.setFont(new Font("Segoe UI", Font.PLAIN, 28)); btnTrash.setForeground(new Color(220, 60, 60)); btnTrash.setContentAreaFilled(false); btnTrash.setBorderPainted(false); btnTrash.setCursor(new Cursor(Cursor.HAND_CURSOR)); 
         if (!isViewOnly) btnTrash.addActionListener(e -> showDarkPopup("delete", tId, name, room)); 
         
@@ -1502,6 +1527,11 @@ private JPanel buildProfitContent() {
 
     private String safeText(String value) {
         return value != null && !value.isBlank() ? value : "N/A";
+    }
+
+    private double parseMoney(String value) {
+        String text = value != null ? value.trim().replace(",", "").replace("₱", "").replace("PHP", "").trim() : "";
+        return text.isEmpty() ? 0.0 : Double.parseDouble(text);
     }
     
     private JPanel createPaymentsCard() {

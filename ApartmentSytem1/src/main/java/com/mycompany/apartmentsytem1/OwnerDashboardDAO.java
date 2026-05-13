@@ -73,14 +73,16 @@ public class OwnerDashboardDAO {
         return expenses;
     }*/
 
-    // Fetches active rooms, their specific rent, and calculates the 2% fee dynamically
+    // Fetches listed rooms, their specific rent, and calculates the 2% fee dynamically
     public List<String[]> getActiveRoomsForServiceFee(int apartmentId) {
         List<String[]> list = new ArrayList<>();
         String sql = "SELECT r.room_number, COALESCE(rb.rent_amount, r.rent_amount) as rent " +
                      "FROM rooms r " +
-                     "JOIN room_occupancy ro ON r.room_number = ro.room_number AND r.apartment_id = ro.apartment_id " +
-                     "LEFT JOIN room_bills rb ON r.room_number = rb.room_number AND r.apartment_id = rb.apartment_id " +
-                     "WHERE r.apartment_id = ? AND ro.status = 'Current'";
+                     "LEFT JOIN room_bills rb ON rb.bill_id = (" +
+                     "    SELECT MAX(rb2.bill_id) FROM room_bills rb2 " +
+                     "    WHERE rb2.room_number = r.room_number AND rb2.apartment_id = r.apartment_id" +
+                     ") " +
+                     "WHERE r.apartment_id = ? ORDER BY r.room_number ASC";
                      
         try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, apartmentId);
@@ -141,7 +143,10 @@ public class OwnerDashboardDAO {
                      "COALESCE(rb.internet_amount, a.internet_rate, 0.0) as i_amt, " +
                      "COALESCE(" + latestBillDueDate + ", rb.rent_due_date, " + automaticDueDate + ", 'N/A') as due_date " +
                      "FROM rooms r JOIN apartments a ON r.apartment_id = a.apartment_id " +
-                     "LEFT JOIN room_bills rb ON r.room_number = rb.room_number AND rb.apartment_id = r.apartment_id " +
+                     "LEFT JOIN room_bills rb ON rb.bill_id = (" +
+                     "    SELECT MAX(rb2.bill_id) FROM room_bills rb2 " +
+                     "    WHERE rb2.room_number = r.room_number AND rb2.apartment_id = r.apartment_id" +
+                     ") " +
                      "WHERE r.apartment_id = ? ORDER BY r.room_number ASC";
         
         try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -264,10 +269,15 @@ public class OwnerDashboardDAO {
 
     public List<String> getBillsHistory(int apartmentId) {
         List<String> list = new ArrayList<>();
-        String sql = "SELECT b.room_number, b.total, b.payment_date FROM bills b WHERE b.apartment_id = ? AND b.paid = 1 ORDER BY b.payment_date DESC LIMIT 10";
+        String sql = "SELECT COALESCE(b.room_number, ro.room_number, rt.target_room_number, 'N/A') AS room_number, " +
+                     "b.total, b.payment_date FROM bills b " +
+                     "LEFT JOIN registered_tenants rt ON rt.tenant_id = b.tenant_id " +
+                     "LEFT JOIN room_occupancy ro ON ro.tenant_id = b.tenant_id " +
+                     "    AND ro.apartment_id = b.apartment_id AND ro.status = 'Current' " +
+                     "WHERE b.apartment_id = ? AND b.paid = 1 ORDER BY b.payment_date DESC LIMIT 10";
         try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, apartmentId); ResultSet rs = ps.executeQuery();
-            while(rs.next()) list.add("Room " + rs.getString("room_number") + " | PHP " + rs.getDouble("total") + " | Paid: " + rs.getString("payment_date"));
+            while(rs.next()) list.add("Room " + rs.getString("room_number") + " | PHP " + String.format("%,.2f", rs.getDouble("total")) + " | Paid: " + rs.getString("payment_date"));
         } catch (Exception e) {} return list;
     }
 

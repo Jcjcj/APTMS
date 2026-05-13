@@ -29,7 +29,7 @@ public class BillingDAO {
 
         try (Connection conn = DBConnection.connect()) {
             
-            String sql = "SELECT a.apartment_id, a.electricity_type, a.elec_rate, "
+            String sql = "SELECT a.apartment_id, ro.room_number, a.electricity_type, a.elec_rate, a.tax_rate, "
                        + "a.water_type, a.water_rate, a.internet_type, a.internet_rate, "
                        + "r.room_id, r.current_elec_reading, r.current_water_reading, "
                        + "ro.move_in_date " 
@@ -49,6 +49,7 @@ public class BillingDAO {
                     }
 
                     int apartmentId = rs.getInt("apartment_id");
+                    String roomNumber = rs.getString("room_number");
                     int roomId = rs.getInt("room_id");
                     
                     LocalDate moveInDate = LocalDate.parse(rs.getString("move_in_date"));
@@ -80,7 +81,7 @@ public class BillingDAO {
                         internet = internetInput != null ? internetInput : 0.0; 
                     }
 
-                    double taxRate = 0.0; 
+                    double taxRate = normalizeTaxRate(rs.getDouble("tax_rate")); 
                     double subtotal = rent + elec + water + internet;
                     double tax = subtotal * taxRate;
                     double total = subtotal + tax;
@@ -88,23 +89,24 @@ public class BillingDAO {
                     updateRoomReadings(conn, roomId, dbElecType, electricityUsage, dbWaterType, waterUsage);
 
                     String insertSql = "INSERT INTO bills "
-                                     + "(tenant_id, apartment_id, month, rent, electricity, water, "
+                                     + "(tenant_id, apartment_id, room_number, month, rent, electricity, water, "
                                      + "internet, tax, penalty, total, due_date, paid) "
-                                     + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?)";
+                                     + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)";
 
                     try (PreparedStatement insertPs = conn.prepareStatement(insertSql, Statement.RETURN_GENERATED_KEYS)) {
                         insertPs.setInt(1, tenantId);
                         insertPs.setInt(2, apartmentId);
-                        insertPs.setString(3, month);
-                        insertPs.setDouble(4, rent);
-                        insertPs.setDouble(5, elec);
-                        insertPs.setDouble(6, water);
-                        insertPs.setDouble(7, internet);
-                        insertPs.setDouble(8, tax);
-                        insertPs.setDouble(9, 0.00); 
-                        insertPs.setDouble(10, total);
-                        insertPs.setString(11, finalDueDate); 
-                        insertPs.setInt(12, 0); 
+                        insertPs.setString(3, roomNumber);
+                        insertPs.setString(4, month);
+                        insertPs.setDouble(5, rent);
+                        insertPs.setDouble(6, elec);
+                        insertPs.setDouble(7, water);
+                        insertPs.setDouble(8, internet);
+                        insertPs.setDouble(9, tax);
+                        insertPs.setDouble(10, 0.00); 
+                        insertPs.setDouble(11, total);
+                        insertPs.setString(12, finalDueDate); 
+                        insertPs.setInt(13, 0); 
 
                         insertPs.executeUpdate();
 
@@ -162,6 +164,13 @@ public class BillingDAO {
             return Math.max(0, consumption) * dbRate; 
         }
         return 0.0;
+    }
+
+    private double normalizeTaxRate(double taxRate) {
+        if (taxRate <= 0.0 || Math.abs(taxRate - 0.02) < 0.000001) {
+            return 0.12;
+        }
+        return taxRate;
     }
     
     // =========================================================

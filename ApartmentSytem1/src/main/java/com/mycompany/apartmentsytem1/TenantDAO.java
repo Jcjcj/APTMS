@@ -13,7 +13,19 @@ public class TenantDAO {
                                   String username, String password, String validId,
                                   String aptName, String roomNum, String moveInDate, String occupantsStr) {
         
-        int occupants = occupantsStr.isEmpty() ? 1 : Integer.parseInt(occupantsStr);
+        int occupants;
+        String normalizedMoveInDate;
+        try {
+            occupants = occupantsStr == null || occupantsStr.isBlank() ? 1 : Integer.parseInt(occupantsStr.trim());
+            if (occupants <= 0) return false;
+
+            normalizedMoveInDate = normalizeDate(moveInDate);
+            if (normalizedMoveInDate.isEmpty()) return false;
+        } catch (Exception e) {
+            LOGGER.warning("Invalid tenant registration number/date input: " + e.getMessage());
+            return false;
+        }
+
         int targetAptId = -1;
 
         try (Connection conn = DBConnection.connect()) {
@@ -47,7 +59,7 @@ public class TenantDAO {
                 ps.setString(8, validId);
                 ps.setInt(9, targetAptId);
                 ps.setString(10, roomNum);
-                ps.setString(11, moveInDate);
+                ps.setString(11, normalizedMoveInDate);
                 ps.setInt(12, occupants);
                 
                 ps.executeUpdate();
@@ -58,6 +70,12 @@ public class TenantDAO {
             LOGGER.severe("Tenant Registration Error: " + e.getMessage());
             return false;
         }
+    }
+
+    private String normalizeDate(String value) {
+        String normalized = value != null ? value.trim().replace("/", "-") : "";
+        if (normalized.isEmpty()) return "";
+        return LocalDate.parse(normalized).toString();
     }
 
     // Allows a tenant to change their password securely

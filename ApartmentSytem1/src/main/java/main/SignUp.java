@@ -157,6 +157,22 @@ public class SignUp extends JFrame implements ActionListener {
         return value != null ? value : "";
     }
 
+    private double parsePercentRate(String value, double fallback) {
+        try {
+            String rawText = value != null ? value.trim().replace(",", "") : "";
+            boolean hasPercentSign = rawText.contains("%");
+            String text = rawText.replace("%", "");
+            if (text.isEmpty()) return fallback;
+
+            double parsed = Double.parseDouble(text);
+            if (parsed < 0) return fallback;
+
+            return hasPercentSign || parsed > 1.0 ? parsed / 100.0 : parsed;
+        } catch (Exception ex) {
+            return fallback;
+        }
+    }
+
     private void applyTenantPrefill() {
         if (txtTenName == null) return;
 
@@ -253,11 +269,7 @@ public class SignUp extends JFrame implements ActionListener {
                 
                 String profileImgPath = (apartmentVisuals != null && apartmentVisuals.length > 0) ? com.mycompany.apartmentsytem1.FileStorageUtil.saveImage(apartmentVisuals[0]) : "default_apt.png";
 
-                double penaltyRateVal = 0.05; 
-                try {
-                    String pRateText = txtPenaltyRate.getText().trim().replace(",", "");
-                    if (!pRateText.isEmpty()) penaltyRateVal = Double.parseDouble(pRateText) / 100.0;
-                } catch (Exception ex) { penaltyRateVal = 0.05; }
+                double penaltyRateVal = parsePercentRate(txtPenaltyRate.getText(), 0.05);
 
                 // FIXED: Extract the actual GCash/Paymaya values from our new variables
                 String gNo = (txtGcashNo != null) ? txtGcashNo.getText().trim() : "";

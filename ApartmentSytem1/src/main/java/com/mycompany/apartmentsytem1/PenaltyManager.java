@@ -39,7 +39,7 @@ public class PenaltyManager {
             ResultSet rs = ps.executeQuery();
             if (!rs.next()) return;  // already penalised or paid / not found
 
-            LocalDate due = LocalDate.parse(rs.getString("due_date"));
+            LocalDate due = parseDueDate(rs.getString("due_date"));
             LocalDate now = LocalDate.now();
             if (!now.isAfter(due)) return;  // not overdue yet
 
@@ -89,12 +89,16 @@ public class PenaltyManager {
 
             int count = 0;
             while (rs.next()) {
-                LocalDate due = LocalDate.parse(rs.getString("due_date"));
-                if (LocalDate.now().isAfter(due)) {
-                    int billId = rs.getInt("bill_id");
-                    applyPenalty(conn, billId);
-                    notifyTenant(billId);
-                    count++;
+                int billId = rs.getInt("bill_id");
+                try {
+                    LocalDate due = parseDueDate(rs.getString("due_date"));
+                    if (LocalDate.now().isAfter(due)) {
+                        applyPenalty(conn, billId);
+                        notifyTenant(billId);
+                        count++;
+                    }
+                } catch (Exception badDate) {
+                    System.err.println("Skipping bill #" + billId + " with invalid due date: " + badDate.getMessage());
                 }
             }
             System.out.println("Penalty run complete. Bills processed: " + count);
@@ -102,6 +106,13 @@ public class PenaltyManager {
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private LocalDate parseDueDate(String dueDate) {
+        if (dueDate == null || dueDate.isBlank() || "N/A".equalsIgnoreCase(dueDate.trim())) {
+            throw new IllegalArgumentException("missing due_date");
+        }
+        return LocalDate.parse(dueDate.trim().replace("/", "-"));
     }
 
     // NOTIFY TENANT (console only)
