@@ -87,7 +87,7 @@ public class SuperAdminDAO {
     
     // Fetches the full read-only profile of an apartment for the Super Admin
     public String[] getApartmentDetailsForReview(int apartmentId) {
-        String sql = "SELECT a.apartment_name, a.apartment_address, a.tin_no, a.capital, a.rooms_available, o.name AS owner_name, o.contact_number " +
+        String sql = "SELECT a.apartment_name, (a.street || ', ' || a.barangay) AS apartment_address, a.tin_no, a.capital, a.rooms_available, o.name AS owner_name, o.contact_number " +
                      "FROM apartments a " +
                      "JOIN owners o ON a.owner_id = o.owner_id " +
                      "WHERE a.apartment_id = ?";
@@ -113,6 +113,61 @@ public class SuperAdminDAO {
             LOGGER.severe("Admin View Error: " + e.getMessage());
         }
         return null;
+    }
+
+    public String getFullRegistrationDetails(int apartmentId) {
+        String sql = "SELECT " +
+                     "a.apartment_name, a.apartment_code, a.tin_no, a.floors, a.total_rooms, a.rooms_available, " +
+                     "a.capital, a.tax_rate, a.penalty_rate, a.payment_method, a.description, a.policy, " +
+                     "a.barangay, a.street, a.electricity_type, a.elec_rate, a.water_type, a.water_rate, " +
+                     "a.internet_type, a.internet_rate, a.contact_number AS apartment_contact, a.email AS apartment_email, " +
+                     "a.emergency_number AS apartment_emergency, a.approval_status, a.rejection_reason, a.next_billing_date, " +
+                     "o.name AS owner_name, o.contact_number AS owner_contact, o.email AS owner_email, o.address AS owner_address, " +
+                     "o.emergency_number AS owner_emergency, o.username AS owner_username, o.gcash_no, o.gcash_name, o.paymaya_no, o.paymaya_name " +
+                     "FROM apartments a JOIN owners o ON a.owner_id = o.owner_id WHERE a.apartment_id = ?";
+
+        try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, apartmentId);
+            ResultSet rs = ps.executeQuery();
+            if (!rs.next()) return "No registration details found.";
+
+            return "Apartment Name: " + safe(rs.getString("apartment_name")) + "\n" +
+                   "Apartment Code: " + safe(rs.getString("apartment_code")) + "\n" +
+                   "Owner Name: " + safe(rs.getString("owner_name")) + "\n" +
+                   "Owner Username: " + safe(rs.getString("owner_username")) + "\n" +
+                   "Owner Contact: " + safe(rs.getString("owner_contact")) + "\n" +
+                   "Owner Email: " + safe(rs.getString("owner_email")) + "\n" +
+                   "Owner Address: " + safe(rs.getString("owner_address")) + "\n" +
+                   "Owner Emergency: " + safe(rs.getString("owner_emergency")) + "\n" +
+                   "GCash No: " + safe(rs.getString("gcash_no")) + "\n" +
+                   "GCash Name: " + safe(rs.getString("gcash_name")) + "\n" +
+                   "Paymaya No: " + safe(rs.getString("paymaya_no")) + "\n" +
+                   "Paymaya Name: " + safe(rs.getString("paymaya_name")) + "\n\n" +
+                   "TIN No: " + safe(rs.getString("tin_no")) + "\n" +
+                   "Floors: " + rs.getInt("floors") + "\n" +
+                   "Total Rooms: " + rs.getInt("total_rooms") + "\n" +
+                   "Rooms Available: " + rs.getInt("rooms_available") + "\n" +
+                   "Capital: PHP " + String.format("%,.2f", rs.getDouble("capital")) + "\n" +
+                   "Tax Rate: " + String.format("%.2f%%", rs.getDouble("tax_rate") * 100.0) + "\n" +
+                   "Penalty Rate: " + String.format("%.2f%%", rs.getDouble("penalty_rate") * 100.0) + "\n" +
+                   "Payment Method: " + safe(rs.getString("payment_method")) + "\n" +
+                   "Barangay: " + safe(rs.getString("barangay")) + "\n" +
+                   "Street: " + safe(rs.getString("street")) + "\n" +
+                   "Apartment Contact: " + safe(rs.getString("apartment_contact")) + "\n" +
+                   "Apartment Email: " + safe(rs.getString("apartment_email")) + "\n" +
+                   "Apartment Emergency: " + safe(rs.getString("apartment_emergency")) + "\n" +
+                   "Electricity Type: " + safe(rs.getString("electricity_type")) + " | Rate: " + rs.getDouble("elec_rate") + "\n" +
+                   "Water Type: " + safe(rs.getString("water_type")) + " | Rate: " + rs.getDouble("water_rate") + "\n" +
+                   "Internet Type: " + safe(rs.getString("internet_type")) + " | Rate: " + rs.getDouble("internet_rate") + "\n" +
+                   "Approval Status: " + safe(rs.getString("approval_status")) + "\n" +
+                   "Rejection Reason: " + safe(rs.getString("rejection_reason")) + "\n" +
+                   "Next Billing Date: " + safe(rs.getString("next_billing_date")) + "\n\n" +
+                   "Description:\n" + safe(rs.getString("description")) + "\n\n" +
+                   "Policy:\n" + safe(rs.getString("policy"));
+        } catch (Exception e) {
+            LOGGER.severe("Get Full Registration Details Error: " + e.getMessage());
+            return "Error loading registration details: " + e.getMessage();
+        }
     }
     
     // Fetches pending apartments to populate the Admin's Inquiry screen
@@ -183,7 +238,7 @@ public class SuperAdminDAO {
     public List<String[]> getActiveOwners() {
         List<String[]> list = new ArrayList<>();
         // Joins apartments and owners to get the exact data for the UI card
-        String sql = "SELECT a.apartment_name, o.name, o.contact_number " +
+        String sql = "SELECT a.apartment_id, a.apartment_name, o.name, o.contact_number " +
                      "FROM apartments a JOIN owners o ON a.owner_id = o.owner_id " +
                      "WHERE a.approval_status = 'APPROVED' AND o.is_active = 1";
                      
@@ -194,6 +249,7 @@ public class SuperAdminDAO {
             while (rs.next()) {
                 // Returns: [Apartment Name, Owner Name, Contact Number]
                 list.add(new String[] {
+                    String.valueOf(rs.getInt("apartment_id")),
                     rs.getString("apartment_name"),
                     rs.getString("name"),
                     rs.getString("contact_number")
@@ -203,6 +259,10 @@ public class SuperAdminDAO {
             LOGGER.severe("Get Active Owners Error: " + e.getMessage());
         }
         return list;
+    }
+
+    private String safe(String value) {
+        return value != null && !value.isBlank() ? value : "N/A";
     }
     
     // Pulls the list of apartments for the Billing Tab overview
@@ -304,14 +364,15 @@ public class SuperAdminDAO {
     // 1. Fetches the detailed transaction list for the new UI
     public List<String[]> getTransactionOverview() {
         List<String[]> list = new ArrayList<>();
-        // BUG 1 FIX: Dynamically calculates 2% of rent for ONLY 'Occupied' rooms!
+        
+        // FIXED: Removed the "AND r.status = 'Occupied'" filter so it counts ALL registered rooms!
         String sql = "SELECT a.apartment_id, a.apartment_name, o.name AS owner_name, o.contact_number, " +
                      "COUNT(r.room_number) AS active_rooms, " +
                      "COALESCE(SUM(r.rent_amount * 0.02), 0) AS total_fee, " +
                      "a.next_billing_date, a.approval_status, a.tin_no, a.payment_method " +
                      "FROM apartments a " +
                      "JOIN owners o ON a.owner_id = o.owner_id " +
-                     "LEFT JOIN rooms r ON a.apartment_id = r.apartment_id AND r.status = 'Occupied' " +
+                     "LEFT JOIN rooms r ON a.apartment_id = r.apartment_id " +
                      "GROUP BY a.apartment_id";
                      
         try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {

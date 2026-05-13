@@ -1,18 +1,6 @@
 package main;
 
-import java.awt.BorderLayout;
-import java.awt.Color;
-import java.awt.Component;
-import java.awt.Cursor;
-import java.awt.Dimension;
-import java.awt.FlowLayout;
-import java.awt.Font;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
-import java.awt.GridLayout;
-import java.awt.Image;
-import java.awt.Insets;
-import java.awt.Toolkit;
+import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.io.File;
@@ -20,31 +8,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
-import javax.swing.BorderFactory;
-import javax.swing.Box;
-import javax.swing.BoxLayout;
-import javax.swing.ButtonGroup;
-import javax.swing.DefaultListCellRenderer;
-import javax.swing.DefaultListModel;
-import javax.swing.ImageIcon;
-import javax.swing.JButton;
-import javax.swing.JCheckBox;
-import javax.swing.JComboBox;
-import javax.swing.JComponent;
-import javax.swing.JDialog;
-import javax.swing.JFileChooser;
-import javax.swing.JFrame;
-import javax.swing.JLabel;
-import javax.swing.JList;
-import javax.swing.JOptionPane;
-import javax.swing.JPanel;
-import javax.swing.JPasswordField;
-import javax.swing.JRadioButton;
-import javax.swing.JScrollPane;
-import javax.swing.JTextArea;
-import javax.swing.JTextField;
-import javax.swing.SwingConstants;
-import javax.swing.SwingUtilities;
+import javax.swing.*;
 import javax.swing.filechooser.FileNameExtensionFilter;
 import javax.swing.plaf.basic.BasicComboBoxUI;
 
@@ -55,6 +19,11 @@ public class SignUp extends JFrame implements ActionListener {
     
     private File tempRoomImageFile; 
     private List<String> pendingRoomImages = new ArrayList<>(); 
+    private List<String> pendingRoomNames = new ArrayList<>();
+    private List<Double> pendingRents = new ArrayList<>();
+    private List<Double> pendingDPs = new ArrayList<>();
+    private List<Double> pendingSecs = new ArrayList<>();
+    private List<String> pendingRoomDescriptions = new ArrayList<>();
     
     private File[] apartmentVisuals; 
     private File profilePicture;
@@ -74,11 +43,22 @@ public class SignUp extends JFrame implements ActionListener {
     private JTextArea areaPolicy, areaDesc;
     private JTextField txtAptEmail, txtAptContact;
     private JTextField txtRoomNum, txtRoomFloor, txtRoomRent, txtRoomDP, txtRoomSecDep;
+    private JTextArea areaRoom;
+    
+    // FIXED: Added variables to capture GCash and Paymaya details!
+    private JTextField txtGcashName, txtGcashNo, txtMayaName, txtMayaNo;
 
     // --- TENANT UI VARIABLES ---
     private JTextField txtTenName, txtTenContact, txtTenEmail, txtTenAddress, txtTenEmergency;
     private JTextField txtTenAptName, txtTenMoveIn, txtTenOccupants, txtTenRoomNum, txtTenUser;
     private JPasswordField txtTenPass;
+    private String tenantRegistrationMode = "";
+    private String pendingTenantName = "";
+    private String pendingTenantContact = "";
+    private String pendingTenantEmail = "";
+    private String pendingTenantUsername = "";
+    private String pendingTenantApartment = "";
+    private String pendingTenantRoom = "";
 
     private static final String[] barangayList = {
         "Adlaon", "Agsungot", "Apas", "Bacayan", "Babag", "Banilad", "Basak Pardo", "Basak San Nicolas",
@@ -159,6 +139,48 @@ public class SignUp extends JFrame implements ActionListener {
         mainPanel.add(scrollPane, BorderLayout.CENTER);
         this.add(mainPanel);
     }
+
+    public SignUp(String mode, String name, String contact, String email, String username, String apartmentName, String roomNumber) {
+        this("TENANT");
+        this.tenantRegistrationMode = mode != null ? mode : "";
+        this.pendingTenantName = safePrefill(name);
+        this.pendingTenantContact = safePrefill(contact);
+        this.pendingTenantEmail = safePrefill(email);
+        this.pendingTenantUsername = safePrefill(username);
+        this.pendingTenantApartment = safePrefill(apartmentName);
+        this.pendingTenantRoom = safePrefill(roomNumber);
+        applyTenantPrefill();
+    }
+
+    private String safePrefill(String value) {
+        return value != null ? value : "";
+    }
+
+    private void applyTenantPrefill() {
+        if (txtTenName == null) return;
+
+        txtTenName.setText(pendingTenantName);
+        txtTenContact.setText(pendingTenantContact);
+        txtTenEmail.setText(pendingTenantEmail);
+        txtTenUser.setText(pendingTenantUsername);
+        txtTenAptName.setText(pendingTenantApartment);
+        txtTenRoomNum.setText(pendingTenantRoom);
+
+        boolean finalizeMode = "TENANT_FINALIZE".equalsIgnoreCase(tenantRegistrationMode);
+        boolean prefillMode = "TENANT_PREFILL".equalsIgnoreCase(tenantRegistrationMode);
+        if (finalizeMode || prefillMode) {
+            setTitle("Finalize Tenant Registration");
+            tenantSubmitButton.setText("FINALIZE");
+        }
+        if (finalizeMode) {
+            txtTenName.setEditable(false);
+            txtTenContact.setEditable(false);
+            txtTenEmail.setEditable(false);
+            txtTenUser.setEditable(false);
+            txtTenAptName.setEditable(false);
+            txtTenRoomNum.setEditable(false);
+        }
+    }
     
     @Override
     public void actionPerformed(ActionEvent e) {
@@ -192,7 +214,7 @@ public class SignUp extends JFrame implements ActionListener {
 
                 // --- SHOW THE PAYMENT MODAL ---
                 String[] paymentData = showRegistrationPaymentPopup(prefillTin, prefillMethod.toString().trim());
-                if (paymentData == null) return; // User closed the popup, stop execution
+                if (paymentData == null) return; 
                 
                 String finalTin = paymentData[0];
                 String finalMethod = paymentData[1] + " (Ref: " + paymentData[3] + ") - " + paymentData[2];
@@ -204,6 +226,14 @@ public class SignUp extends JFrame implements ActionListener {
                 int floors = txtFloors.getText().trim().isEmpty() ? 1 : Integer.parseInt(txtFloors.getText().trim().replace(",", ""));
                 double capital = txtCapital.getText().trim().isEmpty() ? 0.0 : Double.parseDouble(txtCapital.getText().trim().replace(",", ""));
                 
+                if (capital <= 0) {
+                    JOptionPane.showMessageDialog(this,
+                        "Please enter a valid Capital amount greater than 0. This is required for ROI calculations.",
+                        "Invalid Capital",
+                        JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+
                 String description = areaDesc.getText().trim();
                 String policy = areaPolicy.getText().trim();
                 String barangay = cmbBarangay.getSelectedItem().toString();
@@ -228,6 +258,12 @@ public class SignUp extends JFrame implements ActionListener {
                     if (!pRateText.isEmpty()) penaltyRateVal = Double.parseDouble(pRateText) / 100.0;
                 } catch (Exception ex) { penaltyRateVal = 0.05; }
 
+                // FIXED: Extract the actual GCash/Paymaya values from our new variables
+                String gNo = (txtGcashNo != null) ? txtGcashNo.getText().trim() : "";
+                String gName = (txtGcashName != null) ? txtGcashName.getText().trim() : "";
+                String mNo = (txtMayaNo != null) ? txtMayaNo.getText().trim() : "";
+                String mName = (txtMayaName != null) ? txtMayaName.getText().trim() : "";
+
                 List<Integer> roomsPerFloor = new ArrayList<>();
                 List<List<Double>> rentPrices = new ArrayList<>();
                 List<List<Double>> downPayments = new ArrayList<>();
@@ -235,37 +271,35 @@ public class SignUp extends JFrame implements ActionListener {
                 List<List<String>> roomImagesPerFloor = new ArrayList<>();
                 roomImagesPerFloor.add(pendingRoomImages); 
 
-                double rent = txtRoomRent.getText().trim().isEmpty() ? 0.0 : Double.parseDouble(txtRoomRent.getText().trim().replace(",", ""));
-                double dp = txtRoomDP.getText().trim().isEmpty() ? 0.0 : Double.parseDouble(txtRoomDP.getText().trim().replace(",", ""));
-                double sec = txtRoomSecDep.getText().trim().isEmpty() ? 0.0 : Double.parseDouble(txtRoomSecDep.getText().trim().replace(",", ""));
-
                 roomsPerFloor.add(roomListModel.size()); 
-                List<Double> floorRents = new ArrayList<>();
-                List<Double> floorDPs = new ArrayList<>();
-                List<Double> floorSecs = new ArrayList<>();
-                for(int i=0; i<roomListModel.size(); i++) {
-                    floorRents.add(rent);
-                    floorDPs.add(dp);
-                    floorSecs.add(sec);
-                }
-                rentPrices.add(floorRents);
-                downPayments.add(floorDPs);
-                secDeposits.add(floorSecs);
+                
+                List<List<String>> roomNamesArray = new ArrayList<>();
+                roomNamesArray.add(pendingRoomNames);
+                
+                List<List<String>> roomDescriptionsPerFloor = new ArrayList<>();
+                roomDescriptionsPerFloor.add(pendingRoomDescriptions);
+                
+                rentPrices.add(pendingRents);
+                downPayments.add(pendingDPs);
+                secDeposits.add(pendingSecs);
 
                 com.mycompany.apartmentsytem1.OwnerDAO ownerDAO = new com.mycompany.apartmentsytem1.OwnerDAO();
-                int newOwnerId = ownerDAO.registerOwner(ownerName, ownerContact, ownerEmail, ownerAddress, aptEmergency, validIdPath, username, password);
+                
+                // FIXED: Passing the GCash and Paymaya details securely to the DAO
+                int newOwnerId = ownerDAO.registerOwner(ownerName, ownerContact, ownerEmail, ownerAddress, ownerEmergency, validIdPath, gNo, gName, mNo, mName, username, password);
 
                 if (newOwnerId != -1) {
                     com.mycompany.apartmentsytem1.ApartmentDAO aptDAO = new com.mycompany.apartmentsytem1.ApartmentDAO();
                 
                     boolean isAptRegistered = aptDAO.addApartment(
-                        null, aptName, finalTin, floors, 
-                        roomsPerFloor, rentPrices, downPayments, secDeposits, roomImagesPerFloor, 
-                        capital, 0.02, penaltyRateVal, finalMethod, description, policy, 
-                        barangay, street, 
-                        elecType, elecRate, waterType, waterRate, netType, netRate, 
-                        aptContact, aptEmail, "", aptEmergency, profileImgPath, 
-                        newOwnerId
+                    null, aptName, finalTin, floors, 
+                    roomsPerFloor, roomNamesArray, rentPrices, downPayments, secDeposits,
+                    roomImagesPerFloor, roomDescriptionsPerFloor,     
+                    capital, 0.02, penaltyRateVal, finalMethod, description, policy, 
+                    barangay, street, 
+                    elecType, elecRate, waterType, waterRate, netType, netRate, 
+                    aptContact, aptEmail, aptEmergency, profileImgPath, 
+                    newOwnerId
                     );
 
                     if (isAptRegistered) {
@@ -282,7 +316,7 @@ public class SignUp extends JFrame implements ActionListener {
                 JOptionPane.showMessageDialog(this, "Unexpected Error: " + ex.getMessage());
             }
 
-        } else if (e.getSource() == tenantSubmitButton) {
+       } else if (e.getSource() == tenantSubmitButton) {
             
             // =========================================================
             // TENANT DATABASE INTEGRATION
@@ -295,14 +329,23 @@ public class SignUp extends JFrame implements ActionListener {
             String tUser = txtTenUser.getText().trim();
             String tPass = new String(txtTenPass.getPassword());
             
+            String tAptName = txtTenAptName.getText().trim();
+            String tRoomNum = txtTenRoomNum.getText().trim();
+            String tMoveIn = txtTenMoveIn.getText().trim();
+            String tOccupants = txtTenOccupants.getText().trim();
+
             String tId = (validIdFile != null) ? com.mycompany.apartmentsytem1.FileStorageUtil.saveImage(validIdFile) : "no_id.png";
 
             com.mycompany.apartmentsytem1.TenantDAO tenantDAO = new com.mycompany.apartmentsytem1.TenantDAO();
-            tenantDAO.registerTenant(tName, tContact, tEmail, tAddress, tEmergency, tUser, tPass, tId);
+            boolean success = tenantDAO.registerTenant(tName, tContact, tEmail, tAddress, tEmergency, tUser, tPass, tId, tAptName, tRoomNum, tMoveIn, tOccupants);
             
-            JOptionPane.showMessageDialog(this, "Tenant Registration Successful! Pending Owner Approval.", "Success", JOptionPane.INFORMATION_MESSAGE);
-            this.dispose();
-            new LandingPage().setVisible(true);
+            if (success) {
+                JOptionPane.showMessageDialog(this, "Tenant Registration Successful! Pending Owner Approval.", "Success", JOptionPane.INFORMATION_MESSAGE);
+                this.dispose();
+                new LandingPage().setVisible(true);
+            } else {
+                JOptionPane.showMessageDialog(this, "Registration Failed. Please check if the Apartment Name is spelled correctly.", "Error", JOptionPane.ERROR_MESSAGE);
+            }
             
         } else if (e.getSource() == btnAddRoom) {
             String rNum = txtRoomNum.getText().trim();
@@ -316,8 +359,22 @@ public class SignUp extends JFrame implements ActionListener {
                 pendingRoomImages.add(savedRoomImagePath);
                 tempRoomImageFile = null; 
                 
+                String desc = areaRoom.getText().trim();
+                if (desc.isEmpty()) desc = "Standard Room";
+                pendingRoomDescriptions.add(desc);
+
+                pendingRoomNames.add("Room " + rNum);
+                pendingRents.add(txtRoomRent.getText().trim().isEmpty() ? 0.0 : Double.parseDouble(txtRoomRent.getText().trim().replace(",", "")));
+                pendingDPs.add(txtRoomDP.getText().trim().isEmpty() ? 0.0 : Double.parseDouble(txtRoomDP.getText().trim().replace(",", "")));
+                pendingSecs.add(txtRoomSecDep.getText().trim().isEmpty() ? 0.0 : Double.parseDouble(txtRoomSecDep.getText().trim().replace(",", "")));
+                
                 txtRoomNum.setText("");
                 txtRoomFloor.setText("");
+                txtRoomRent.setText("");
+                txtRoomDP.setText("");
+                txtRoomSecDep.setText("");
+                areaRoom.setText("");            
+
             } else {
                 JOptionPane.showMessageDialog(this, "Please enter both Room Number and Floor.", "Error", JOptionPane.ERROR_MESSAGE);
             }
@@ -325,7 +382,7 @@ public class SignUp extends JFrame implements ActionListener {
     }
 
     // =========================================================================
-    // REGISTRATION PAYMENT POPUP (Image 2)
+    // REGISTRATION PAYMENT POPUP
     // =========================================================================
     private String[] showRegistrationPaymentPopup(String prefillTin, String prefillMethod) {
         JDialog dialog = new JDialog(this, true); 
@@ -389,7 +446,7 @@ public class SignUp extends JFrame implements ActionListener {
         btnSubmitPop.setFocusPainted(false); btnSubmitPop.setCursor(new Cursor(Cursor.HAND_CURSOR));
         btnSubmitPop.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
         
-        String[] result = new String[4]; // Holds the payment data to return to the main form
+        String[] result = new String[4]; 
         
         btnSubmitPop.addActionListener(e -> {
             result[0] = popTin.getText().equals("TIN Number") ? "" : popTin.getText();
@@ -414,9 +471,9 @@ public class SignUp extends JFrame implements ActionListener {
         dialog.add(panel); 
         dialog.pack(); 
         dialog.setLocationRelativeTo(this); 
-        dialog.setVisible(true); // Blocks until the user clicks Submit or Cancel
+        dialog.setVisible(true); 
         
-        if (result[0] == null) return null; // Cancelled
+        if (result[0] == null) return null; 
         return result;
     }
     
@@ -516,18 +573,19 @@ public class SignUp extends JFrame implements ActionListener {
         dynamicPaymentContainer.setLayout(new BoxLayout(dynamicPaymentContainer, BoxLayout.Y_AXIS));
         dynamicPaymentContainer.setOpaque(false);
 
+        // FIXED: Added variable names to the GCash/Paymaya fields so we can extract them later!
         JPanel gcashPanel = new JPanel(new GridLayout(2, 2, 5, 5)); gcashPanel.setOpaque(false);
         gcashPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(Color.WHITE), "GCash Details", 0, 0, new Font("Segoe UI", Font.BOLD, 12), Color.WHITE));
-        gcashPanel.add(createWhiteLabel("Full Name:")); gcashPanel.add(new JTextField());
-        gcashPanel.add(createWhiteLabel("GCash No.:")); gcashPanel.add(new JTextField());
+        gcashPanel.add(createWhiteLabel("Full Name:")); gcashPanel.add(txtGcashName = new JTextField());
+        gcashPanel.add(createWhiteLabel("GCash No.:")); gcashPanel.add(txtGcashNo = new JTextField());
         gcashPanel.setVisible(false); 
         gcashPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
         dynamicPaymentContainer.add(gcashPanel);
         
         JPanel mayaPanel = new JPanel(new GridLayout(2, 2, 5, 5)); mayaPanel.setOpaque(false);
         mayaPanel.setBorder(BorderFactory.createTitledBorder(BorderFactory.createLineBorder(Color.WHITE), "Maya Details", 0, 0, new Font("Segoe UI", Font.BOLD, 12), Color.WHITE));
-        mayaPanel.add(createWhiteLabel("Full Name:")); mayaPanel.add(new JTextField());
-        mayaPanel.add(createWhiteLabel("Maya No.:")); mayaPanel.add(new JTextField());
+        mayaPanel.add(createWhiteLabel("Full Name:")); mayaPanel.add(txtMayaName = new JTextField());
+        mayaPanel.add(createWhiteLabel("Maya No.:")); mayaPanel.add(txtMayaNo = new JTextField());
         mayaPanel.setVisible(false); 
         mayaPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 80));
         dynamicPaymentContainer.add(mayaPanel);
@@ -677,7 +735,9 @@ public class SignUp extends JFrame implements ActionListener {
         txtRoomFloor = new JTextField();
         col3.add(createPairedInputBlock("Room Number", txtRoomNum, "Room Floor", txtRoomFloor));
 
-        JTextArea areaRoom = new JTextArea(3, 20); areaRoom.setLineWrap(true); areaRoom.setWrapStyleWord(true);
+        areaRoom = new JTextArea(3, 20);
+        areaRoom.setLineWrap(true);
+        areaRoom.setWrapStyleWord(true);
         col3.add(createInputBlock("Room Details", new JScrollPane(areaRoom)));
 
         col3.add(createInputBlock("Room Rent", txtRoomRent = new JTextField()));

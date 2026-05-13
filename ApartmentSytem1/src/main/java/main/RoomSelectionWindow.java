@@ -12,20 +12,12 @@ import java.sql.ResultSet;
 
 public class RoomSelectionWindow extends JFrame {
 
-    private int targetAptId;
+    private SearchWindow.ApartmentData apt;
 
     public RoomSelectionWindow(SearchWindow.ApartmentData apt) {
-        this.targetAptId = apt.id; // Extract the ID to use as our source of truth
+        this.apt = apt;
         
-        String aptName = "Apartment";
-        try (Connection conn = DBConnection.connect(); 
-             PreparedStatement ps = conn.prepareStatement("SELECT apartment_name FROM apartments WHERE apartment_id = ?")) {
-            ps.setInt(1, targetAptId);
-            ResultSet rs = ps.executeQuery();
-            if (rs.next()) aptName = rs.getString("apartment_name");
-        } catch (Exception e) { e.printStackTrace(); }
-
-        setTitle("Select a Room - " + aptName);
+        setTitle("Select a Room - " + apt.name);
         setExtendedState(JFrame.MAXIMIZED_BOTH);
         setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         setLayout(new BorderLayout());
@@ -62,45 +54,37 @@ public class RoomSelectionWindow extends JFrame {
         left.setPreferredSize(new Dimension(400, 0));
         left.setBorder(new EmptyBorder(40, 40, 40, 20));
 
-        // Default Fallbacks
-        String dbName = "Loading...";
-        String dbAddress = "Loading...";
-        String dbDesc = "Loading...";
-        String utilities = "Loading...";
-        int dbVacant = 0;
+        String desc = "Loading...";
+        String contact = "Loading...";
+        String email = "Loading...";
+        String utilities = "";
 
-        // DIRECT DATABASE FETCH
-        String sql = "SELECT apartment_name, barangay, street, description, rooms_available, " +
-                     "electricity_type, water_type, internet_type " +
-                     "FROM apartments WHERE apartment_id = ?";
-                     
+        // Get details to display on the left side
+        String sql = "SELECT description, contact_number, email, electricity_type, water_type, internet_type FROM apartments WHERE apartment_id = ?";
         try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, targetAptId);
+            ps.setInt(1, apt.id);
             ResultSet rs = ps.executeQuery();
             if (rs.next()) {
-                dbName = rs.getString("apartment_name");
-                dbAddress = rs.getString("barangay") + ", " + rs.getString("street");
-                dbDesc = rs.getString("description");
-                dbVacant = rs.getInt("rooms_available");
-                utilities = "Water (" + rs.getString("water_type") + ")<br>" +
-                            "Electricity (" + rs.getString("electricity_type") + ")<br>" +
-                            "Internet (" + rs.getString("internet_type") + ")";
+                desc = rs.getString("description");
+                contact = rs.getString("contact_number");
+                email = rs.getString("email");
+                utilities = "Water (" + rs.getString("water_type") + ")<br>Electricity (" + rs.getString("electricity_type") + ")<br>Internet (" + rs.getString("internet_type") + ")";
             }
         } catch (Exception e) { e.printStackTrace(); }
 
-        JLabel lblName = new JLabel("<html><div style='width:250px;'>" + dbName + "</div></html>");
+        JLabel lblName = new JLabel("<html><div style='width:250px;'>" + apt.name + "</div></html>");
         lblName.setFont(new Font("Segoe UI", Font.BOLD, 36));
         lblName.setForeground(Color.WHITE);
 
-        JLabel lblAddress = new JLabel(dbAddress);
+        JLabel lblAddress = new JLabel(apt.barangay + ", " + apt.street);
         lblAddress.setFont(new Font("Segoe UI", Font.PLAIN, 14));
         lblAddress.setForeground(Color.LIGHT_GRAY);
         
-        JLabel lblVacant = new JLabel(dbVacant + " Vacant Room/s Available");
+        JLabel lblVacant = new JLabel(apt.vacantRooms + " Vacant Room/s Available");
         lblVacant.setFont(new Font("Segoe UI", Font.PLAIN, 20));
         lblVacant.setForeground(Color.WHITE);
 
-        JLabel lblDesc = new JLabel("<html><b>Establishment Description</b><br><br>" + dbDesc + "</html>");
+        JLabel lblDesc = new JLabel("<html><b>Establishment Description</b><br><br>" + desc + "</html>");
         lblDesc.setFont(new Font("Segoe UI", Font.PLAIN, 14));
         lblDesc.setForeground(Color.WHITE);
         
@@ -125,15 +109,17 @@ public class RoomSelectionWindow extends JFrame {
         gridPanel.setOpaque(false);
         gridPanel.setBorder(new EmptyBorder(40, 40, 40, 40));
 
+        // 1. UPDATED SQL: Now grabs the image_url from the rooms table
         String sql = "SELECT room_number, rent_amount, image_url FROM rooms WHERE apartment_id = ? AND status = 'Available' ORDER BY room_number ASC";
         try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, targetAptId);
+            ps.setInt(1, apt.id);
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
                 String roomNum = rs.getString("room_number");
                 double rent = rs.getDouble("rent_amount");
-                String imgUrl = rs.getString("image_url"); 
+                String imgUrl = rs.getString("image_url"); // 2. Extract the image filename
                 
+                // 3. Pass the imgUrl into the card creator
                 gridPanel.add(createRoomCard(roomNum, rent, imgUrl)); 
             }
         } catch (Exception e) { e.printStackTrace(); }
@@ -141,6 +127,7 @@ public class RoomSelectionWindow extends JFrame {
         return gridPanel;
     }
 
+    // 4. UPDATED PARAMETERS: Added 'String imageUrl' so the card knows what file to look for
     private JPanel createRoomCard(String roomNumber, double rentAmount, String imageUrl) {
         JPanel card = new JPanel(new BorderLayout());
         card.setBackground(new Color(0, 35, 15)); 
@@ -153,10 +140,12 @@ public class RoomSelectionWindow extends JFrame {
         imgPlaceholder.setOpaque(true);
         imgPlaceholder.setBackground(new Color(220, 240, 255)); 
         
+        // --- REAL IMAGE LOADING LOGIC ---
         try {
             java.io.File file = new java.io.File("uploads/" + imageUrl); 
-            if (file.exists() && imageUrl != null && !imageUrl.trim().isEmpty()) {
+            if (file.exists() && imageUrl != null && !imageUrl.trim().isEmpty() && !imageUrl.equals("default_room.png")) {
                 ImageIcon originalIcon = new ImageIcon(file.getAbsolutePath());
+                // Scale smaller to fit inside the selection card
                 Image scaledImg = originalIcon.getImage().getScaledInstance(300, 180, Image.SCALE_SMOOTH);
                 imgPlaceholder.setIcon(new ImageIcon(scaledImg));
             } else {
@@ -166,6 +155,7 @@ public class RoomSelectionWindow extends JFrame {
         } catch (Exception ex) {
             imgPlaceholder.setText("Error Loading Image");
         }
+        // ----------------------------------------------
         
         JPanel infoPanel = new JPanel(new BorderLayout());
         infoPanel.setOpaque(false);
@@ -189,8 +179,8 @@ public class RoomSelectionWindow extends JFrame {
             @Override
             public void mouseClicked(MouseEvent e) {
                 dispose(); 
-                // CRITICAL FIX: Pass the raw IDs to the final window, not the object!
-                new RoomDetailsWindow(targetAptId, roomNumber).setVisible(true); 
+                apt.rent = rentAmount; // Pass the exact rent of this room
+                new RoomDetailsWindow(apt, roomNumber).setVisible(true); 
             }
         });
 

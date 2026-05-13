@@ -60,7 +60,7 @@ public class OwnerDashboardDAO {
     // 3. EXPENSES & PLATFORM FEE CALCULATIONS
     // =====================================================================
 
-    public double[] getExpensesSummation(int apartmentId) {
+    /*public double[] getExpensesSummation(int apartmentId) {
         double[] expenses = {0.0, 0.0, 0.0}; // Elec, Water, Net
         String sql = "SELECT SUM(electricity_amount) as e, SUM(water_amount) as w, SUM(internet_amount) as i FROM room_bills WHERE apartment_id = ?";
         try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -71,7 +71,7 @@ public class OwnerDashboardDAO {
             }
         } catch (Exception e) { LOGGER.severe("Expenses Sum Error: " + e.getMessage()); }
         return expenses;
-    }
+    }*/
 
     // Fetches active rooms, their specific rent, and calculates the 2% fee dynamically
     public List<String[]> getActiveRoomsForServiceFee(int apartmentId) {
@@ -112,6 +112,24 @@ public class OwnerDashboardDAO {
 
     public List<String[]> getOwnerRooms(int apartmentId) {
         List<String[]> rooms = new ArrayList<>();
+
+        String latestBillDueDate =
+                     "(SELECT b.due_date " +
+                     " FROM room_occupancy ro2 " +
+                     " JOIN bills b ON b.tenant_id = ro2.tenant_id AND b.apartment_id = ro2.apartment_id " +
+                     " WHERE ro2.apartment_id = r.apartment_id " +
+                     "   AND ro2.room_number = r.room_number " +
+                     "   AND ro2.status = 'Current' " +
+                     "   AND b.paid = 0 " +
+                     " ORDER BY b.bill_id DESC LIMIT 1)";
+
+        String automaticDueDate =
+                     "(SELECT date(ro3.move_in_date, '+1 month') " +
+                     " FROM room_occupancy ro3 " +
+                     " WHERE ro3.apartment_id = r.apartment_id " +
+                     "   AND ro3.room_number = r.room_number " +
+                     "   AND ro3.status = 'Current' " +
+                     " ORDER BY ro3.occupancy_id DESC LIMIT 1)";
         
         // METER-AWARE FIX: Automatically populates Fixed rates, but leaves Metered rates at 0.00 for manual input!
         String sql = "SELECT r.room_number, a.internet_type, " +
@@ -120,7 +138,8 @@ public class OwnerDashboardDAO {
                      "     WHEN a.electricity_type = 'Fixed' THEN a.elec_rate ELSE 0.0 END as e_amt, " +
                      "CASE WHEN rb.water_amount IS NOT NULL THEN rb.water_amount " +
                      "     WHEN a.water_type = 'Fixed' THEN a.water_rate ELSE 0.0 END as w_amt, " +
-                     "COALESCE(rb.internet_amount, a.internet_rate, 0.0) as i_amt " +
+                     "COALESCE(rb.internet_amount, a.internet_rate, 0.0) as i_amt, " +
+                     "COALESCE(" + latestBillDueDate + ", rb.rent_due_date, " + automaticDueDate + ", 'N/A') as due_date " +
                      "FROM rooms r JOIN apartments a ON r.apartment_id = a.apartment_id " +
                      "LEFT JOIN room_bills rb ON r.room_number = rb.room_number AND rb.apartment_id = r.apartment_id " +
                      "WHERE r.apartment_id = ? ORDER BY r.room_number ASC";
@@ -130,7 +149,8 @@ public class OwnerDashboardDAO {
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
                 // Check if internet is offered
-                boolean hasNet = !rs.getString("internet_type").equalsIgnoreCase("None");
+                String internetType = rs.getString("internet_type");
+                boolean hasNet = internetType != null && !internetType.equalsIgnoreCase("None");
                 
                 rooms.add(new String[]{
                     rs.getString("room_number"),
@@ -138,6 +158,7 @@ public class OwnerDashboardDAO {
                     String.valueOf(rs.getDouble("e_amt")),
                     String.valueOf(rs.getDouble("w_amt")),
                     String.valueOf(rs.getDouble("i_amt")),
+                    rs.getString("due_date"),
                     String.valueOf(hasNet)
                 });
             }
@@ -209,11 +230,21 @@ public class OwnerDashboardDAO {
 
     public List<String[]> getPendingRoomViewings(int apartmentId) {
         List<String[]> list = new ArrayList<>();
-        String sql = "SELECT schedule_id, tenant_name, room_number, schedule_date FROM viewing_schedule WHERE apartment_id = ? AND status = 'PENDING'";
+        String sql = "SELECT schedule_id, tenant_name, room_number, schedule_date, viewing_time " +
+                     "FROM viewing_schedule WHERE apartment_id = ? AND status = 'PENDING'";
         try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, apartmentId);
             ResultSet rs = ps.executeQuery();
-            while(rs.next()) list.add(new String[]{String.valueOf(rs.getInt("schedule_id")), rs.getString("tenant_name"), rs.getString("room_number"), rs.getString("schedule_date")});
+            while(rs.next()) {
+                String type = "RESERVE_NOW".equalsIgnoreCase(rs.getString("viewing_time")) ? "Reservation" : "Viewing";
+                list.add(new String[]{
+                    String.valueOf(rs.getInt("schedule_id")),
+                    rs.getString("tenant_name"),
+                    rs.getString("room_number"),
+                    rs.getString("schedule_date"),
+                    type
+                });
+            }
         } catch (Exception e) {} return list;
     }
 
@@ -249,12 +280,21 @@ public class OwnerDashboardDAO {
         } catch (Exception e) {} return list;
     }
 
-    public List<String> getNotificationHistory(int apartmentId) {
+    public List<String> getNotificationHistory(int apartmentId, String ownerUsername) {
         List<String> list = new ArrayList<>();
-        String sql = "SELECT title, message, date_posted FROM announcements WHERE apartment_id = ? ORDER BY date_posted DESC LIMIT 10";
+        String sql =
+                "SELECT title, message, created_at FROM (" +
+                "  SELECT title, message, date_posted AS created_at, announcement_id AS sort_id " +
+                "  FROM announcements WHERE apartment_id = ? " +
+                "  UNION ALL " +
+                "  SELECT title, message, date_created AS created_at, notification_id AS sort_id " +
+                "  FROM notifications WHERE target_username = ? " +
+                ") ORDER BY created_at DESC, sort_id DESC LIMIT 10";
         try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setInt(1, apartmentId); ResultSet rs = ps.executeQuery();
-            while(rs.next()) list.add(rs.getString("title") + " - " + rs.getString("date_posted") + "\n" + rs.getString("message"));
+            ps.setInt(1, apartmentId);
+            ps.setString(2, ownerUsername);
+            ResultSet rs = ps.executeQuery();
+            while(rs.next()) list.add(rs.getString("title") + " - " + rs.getString("created_at") + "\n" + rs.getString("message"));
         } catch (Exception e) {} return list;
     }
 
@@ -264,8 +304,11 @@ public class OwnerDashboardDAO {
 
     public List<String[]> getActiveTenantDetails(int apartmentId) {
         List<String[]> list = new ArrayList<>();
-        String sql = "SELECT tenant_id, name, target_room_number, contact_number, email, move_in_date " +
-                     "FROM registered_tenants WHERE target_apartment_id = ? AND approval_status = 'APPROVED' AND is_active = 1";
+        String sql = "SELECT rt.tenant_id, rt.name, COALESCE(ro.room_number, rt.target_room_number) AS room_number, " +
+                     "rt.contact_number, rt.email, COALESCE(ro.move_in_date, rt.move_in_date) AS joined_date " +
+                     "FROM registered_tenants rt " +
+                     "LEFT JOIN room_occupancy ro ON ro.tenant_id = rt.tenant_id AND ro.apartment_id = rt.target_apartment_id AND ro.status = 'Current' " +
+                     "WHERE rt.target_apartment_id = ? AND rt.approval_status = 'APPROVED' AND rt.is_active = 1";
         try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, apartmentId);
             ResultSet rs = ps.executeQuery();
@@ -273,25 +316,158 @@ public class OwnerDashboardDAO {
                 list.add(new String[]{
                     String.valueOf(rs.getInt("tenant_id")), 
                     rs.getString("name"),
-                    rs.getString("target_room_number"), 
+                    rs.getString("room_number"), 
                     rs.getString("contact_number"),
                     rs.getString("email"), 
-                    rs.getString("move_in_date")
+                    rs.getString("joined_date")
                 });
             }
         } catch (Exception e) { LOGGER.severe("Get Active Tenants Error: " + e.getMessage()); }
         return list;
     }
 
-    public boolean updateTenantContact(int tenantId, String newName, String newContact, String newEmail) {
-        String sql = "UPDATE registered_tenants SET name = ?, contact_number = ?, email = ? WHERE tenant_id = ?";
+    public String[] getTenantRegistrationDetails(int tenantId) {
+        String sql = "SELECT rt.name, rt.contact_number, rt.email, rt.address, rt.emergency_contact, " +
+                     "a.apartment_name, " +
+                     "COALESCE(ro.room_number, rt.target_room_number) AS room_number, " +
+                     "COALESCE(ro.move_in_date, rt.move_in_date) AS joined_date, " +
+                     "rt.occupants, rt.valid_id " +
+                     "FROM registered_tenants rt " +
+                     "LEFT JOIN apartments a ON a.apartment_id = rt.target_apartment_id " +
+                     "LEFT JOIN room_occupancy ro ON ro.tenant_id = rt.tenant_id AND ro.status = 'Current' " +
+                     "WHERE rt.tenant_id = ?";
         try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
-            ps.setString(1, newName); 
-            ps.setString(2, newContact); 
-            ps.setString(3, newEmail); 
-            ps.setInt(4, tenantId);
-            return ps.executeUpdate() > 0;
-        } catch (Exception e) { return false; }
+            ps.setInt(1, tenantId);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return new String[]{
+                    rs.getString("name"),
+                    rs.getString("contact_number"),
+                    rs.getString("email"),
+                    rs.getString("address"),
+                    rs.getString("emergency_contact"),
+                    rs.getString("apartment_name"),
+                    rs.getString("room_number"),
+                    rs.getString("joined_date"),
+                    rs.getString("occupants"),
+                    rs.getString("valid_id")
+                };
+            }
+        } catch (Exception e) {
+            LOGGER.severe("Get Tenant Registration Details Error: " + e.getMessage());
+        }
+        return null;
+    }
+
+    public String[] getOwnerApartmentProfile(int ownerId, int apartmentId) {
+        String sql = "SELECT " +
+                     "o.name AS owner_name, o.contact_number AS owner_contact, o.email AS owner_email, " +
+                     "o.address AS owner_address, o.emergency_number AS owner_emergency, " +
+                     "o.gcash_no, o.gcash_name, o.paymaya_no, o.paymaya_name, " +
+                     "a.apartment_name, a.tin_no, a.description, a.policy, a.barangay, a.street, " +
+                     "a.contact_number AS apartment_contact, a.email AS apartment_email, " +
+                     "a.emergency_number AS apartment_emergency " +
+                     "FROM owners o JOIN apartments a ON o.owner_id = a.owner_id " +
+                     "WHERE o.owner_id = ? AND a.apartment_id = ?";
+
+        try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, ownerId);
+            ps.setInt(2, apartmentId);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) {
+                return new String[] {
+                    rs.getString("owner_name"),
+                    rs.getString("owner_contact"),
+                    rs.getString("owner_email"),
+                    rs.getString("owner_address"),
+                    rs.getString("owner_emergency"),
+                    rs.getString("gcash_no"),
+                    rs.getString("gcash_name"),
+                    rs.getString("paymaya_no"),
+                    rs.getString("paymaya_name"),
+                    rs.getString("apartment_name"),
+                    rs.getString("tin_no"),
+                    rs.getString("description"),
+                    rs.getString("policy"),
+                    rs.getString("barangay"),
+                    rs.getString("street"),
+                    rs.getString("apartment_contact"),
+                    rs.getString("apartment_email"),
+                    rs.getString("apartment_emergency")
+                };
+            }
+        } catch (Exception e) {
+            LOGGER.severe("Get Owner Apartment Profile Error: " + e.getMessage());
+        }
+        return null;
+    }
+
+    public boolean updateOwnerApartmentProfile(
+            int ownerId,
+            int apartmentId,
+            String ownerName,
+            String ownerContact,
+            String ownerEmail,
+            String ownerAddress,
+            String ownerEmergency,
+            String gcashNo,
+            String gcashName,
+            String paymayaNo,
+            String paymayaName,
+            String apartmentName,
+            String tinNo,
+            String description,
+            String policy,
+            String barangay,
+            String street,
+            String apartmentContact,
+            String apartmentEmail,
+            String apartmentEmergency) {
+        String ownerSql = "UPDATE owners SET name = ?, contact_number = ?, email = ?, address = ?, emergency_number = ?, " +
+                          "gcash_no = ?, gcash_name = ?, paymaya_no = ?, paymaya_name = ? WHERE owner_id = ?";
+        String apartmentSql = "UPDATE apartments SET apartment_name = ?, tin_no = ?, description = ?, policy = ?, barangay = ?, street = ?, " +
+                              "contact_number = ?, email = ?, emergency_number = ? WHERE apartment_id = ? AND owner_id = ?";
+
+        try (Connection conn = DBConnection.connect()) {
+            conn.setAutoCommit(false);
+            try (PreparedStatement psOwner = conn.prepareStatement(ownerSql);
+                 PreparedStatement psApartment = conn.prepareStatement(apartmentSql)) {
+                psOwner.setString(1, ownerName);
+                psOwner.setString(2, ownerContact);
+                psOwner.setString(3, ownerEmail);
+                psOwner.setString(4, ownerAddress);
+                psOwner.setString(5, ownerEmergency);
+                psOwner.setString(6, gcashNo);
+                psOwner.setString(7, gcashName);
+                psOwner.setString(8, paymayaNo);
+                psOwner.setString(9, paymayaName);
+                psOwner.setInt(10, ownerId);
+                psOwner.executeUpdate();
+
+                psApartment.setString(1, apartmentName);
+                psApartment.setString(2, tinNo);
+                psApartment.setString(3, description);
+                psApartment.setString(4, policy);
+                psApartment.setString(5, barangay);
+                psApartment.setString(6, street);
+                psApartment.setString(7, apartmentContact);
+                psApartment.setString(8, apartmentEmail);
+                psApartment.setString(9, apartmentEmergency);
+                psApartment.setInt(10, apartmentId);
+                psApartment.setInt(11, ownerId);
+                psApartment.executeUpdate();
+
+                conn.commit();
+                return true;
+            } catch (Exception e) {
+                conn.rollback();
+                LOGGER.severe("Update Owner Apartment Profile Error: " + e.getMessage());
+                return false;
+            }
+        } catch (Exception e) {
+            LOGGER.severe("Update Owner Apartment Profile Error: " + e.getMessage());
+            return false;
+        }
     }
 
     public boolean evictTenant(int tenantId, int apartmentId) {
@@ -317,29 +493,26 @@ public class OwnerDashboardDAO {
             }
         } catch (Exception e) { return false; }
     }
-    
-    // Creates an official, approved tenant account and returns the new Tenant ID
-    public int createOfficialTenantAccount(int apartmentId, String name, String roomNumber, String username, String rawPassword) {
-        String sql = "INSERT INTO registered_tenants (name, target_apartment_id, target_room_number, username, password, approval_status, is_active, contact_number) " +
-                     "VALUES (?, ?, ?, ?, ?, 'APPROVED', 1, 'N/A')";
-                     
-        try (Connection conn = DBConnection.connect(); 
-             PreparedStatement ps = conn.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS)) {
-             
-            ps.setString(1, name);
-            ps.setInt(2, apartmentId);
-            ps.setString(3, roomNumber);
-            ps.setString(4, username);
-            ps.setString(5, PasswordUtil.hashPassword(rawPassword)); // Securely hash it!
-            
-            ps.executeUpdate();
-            ResultSet rs = ps.getGeneratedKeys();
-            if (rs.next()) {
-                return rs.getInt(1); // Return the newly generated tenant_id
+    public List<String[]> getPendingPayments(int apartmentId) {
+        List<String[]> list = new java.util.ArrayList<>();
+        String sql = "SELECT transaction_id, tenant_id, room_number, payment_method, reference_no, date_paid " +
+                     "FROM payment_transactions WHERE apartment_id = ? AND status = 'PENDING'";
+        try (java.sql.Connection conn = com.mycompany.apartmentsytem1.DBConnection.connect();
+             java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+            ps.setInt(1, apartmentId);
+            java.sql.ResultSet rs = ps.executeQuery();
+            while (rs.next()) {
+                list.add(new String[]{
+                    String.valueOf(rs.getInt("transaction_id")),
+                    String.valueOf(rs.getInt("tenant_id")),
+                    rs.getString("room_number"),
+                    rs.getString("payment_method"),
+                    rs.getString("reference_no"),
+                    rs.getString("date_paid")
+                });
             }
-        } catch(Exception e) {
-            LOGGER.severe("Tenant Creation Error: " + e.getMessage());
-        }
-        return -1;
+        } catch (Exception e) { e.printStackTrace(); }
+        return list;
     }
+
 }

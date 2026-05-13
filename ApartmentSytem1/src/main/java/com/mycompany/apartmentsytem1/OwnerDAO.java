@@ -11,14 +11,18 @@ import java.util.logging.Logger;
 public class OwnerDAO {
     private static final Logger LOGGER = Logger.getLogger(OwnerDAO.class.getName());
 
-   public int registerOwner(String name, String contactNumber, String email, String address, String emergency, String validId, String username, String password) {
+   // FIXED: Now accepts GCash and Paymaya details
+   public int registerOwner(String name, String contactNumber, String email, String address, String emergency, String validId, 
+                            String gcashNo, String gcashName, String mayaNo, String mayaName, String username, String password) {
         // DATA VALIDATION
         if (name == null || name.trim().isEmpty() || username == null || username.trim().isEmpty() || password == null || password.length() < 6) {
             LOGGER.warning("Validation Failed: Missing required owner details or password too short.");
             return -1; // -1 means failure
         }
         
-        String sql = "INSERT INTO owners(name, contact_number, email, address, emergency_number, valid_id, username, password, is_active) VALUES(?,?,?,?,?,?,?,?,1)";
+        // FIXED: Added the 4 new payment columns to the INSERT statement!
+        String sql = "INSERT INTO owners(name, contact_number, email, address, emergency_number, valid_id, gcash_no, gcash_name, paymaya_no, paymaya_name, username, password, is_active) " +
+                     "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1)";
         
         try (Connection conn = DBConnection.connect();
              // CRITICAL: Request the generated keys!
@@ -30,8 +34,12 @@ public class OwnerDAO {
             ps.setString(4, address);
             ps.setString(5, emergency);
             ps.setString(6, validId);
-            ps.setString(7, username);
-            ps.setString(8, PasswordUtil.hashPassword(password));
+            ps.setString(7, gcashNo);    // <-- Saved!
+            ps.setString(8, gcashName);  // <-- Saved!
+            ps.setString(9, mayaNo);     // <-- Saved!
+            ps.setString(10, mayaName);  // <-- Saved!
+            ps.setString(11, username);
+            ps.setString(12, PasswordUtil.hashPassword(password));
             ps.executeUpdate();
             
             // Catch the new Owner ID and return it to the frontend
@@ -189,10 +197,6 @@ public class OwnerDAO {
      * Authenticates an owner for the main login screen.
      * Returns the owner_id if successful, or -1 if login fails.
      */
-    /**
-     * Authenticates an owner for the main login screen.
-     * Returns the owner_id if successful, or -1 if login fails.
-     */
     public int authenticateOwner(String username, String rawPassword) {
         // We only search for the username, and grab the stored password hash and ID
         String sql = "SELECT owner_id, password FROM owners WHERE username = ?";
@@ -236,6 +240,35 @@ public class OwnerDAO {
             LOGGER.severe("Edit Tenant Error: " + e.getMessage());
             return false;
         }
+    }
+    
+    // ==========================================
+    // RULE 5: GENERATE TENANT INVITE TOKEN
+    // ==========================================
+    public String generateTenantInviteToken(int apartmentId, String tenantName, String email, String roomNumber) {
+        // Generates a secure, random 8-character token (e.g., TKN-A8F3B9D1)
+        String token = "TKN-" + java.util.UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+        
+        // Creates the base Single Continuous Account (Rule 3) with an INVITED status, now including the NAME!
+        String sql = "INSERT INTO registered_tenants (registration_token, name, email, target_apartment_id, target_room_number, approval_status) " +
+                     "VALUES (?, ?, ?, ?, ?, 'INVITED')";
+                     
+        try (java.sql.Connection conn = DBConnection.connect();
+             java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
+             
+            ps.setString(1, token);
+            ps.setString(2, tenantName);
+            ps.setString(3, email);
+            ps.setInt(4, apartmentId);
+            ps.setString(5, roomNumber);
+            
+            if (ps.executeUpdate() > 0) {
+                return token;
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return null;
     }
     
 }

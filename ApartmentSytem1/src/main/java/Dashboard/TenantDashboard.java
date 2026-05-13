@@ -35,7 +35,8 @@ public class TenantDashboard extends JFrame implements ActionListener {
     private int currentTenantId; 
     private int currentApartmentId = -1; 
     private String currentRoom = "N/A"; 
-    private String tenantName = "Catriona Gray"; // Default fallback
+    private String tenantName = "New Tenant"; // Default fallback
+    private String currentTenantUsername = "";
     private String currentApartmentName = "Apartment";
 
     public TenantDashboard(int tenantId) {
@@ -44,7 +45,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
         // --- 1. AUTO-FETCH TENANT INFO ---
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(
-                 "SELECT t.name, r.apartment_id, r.room_number, a.apartment_name FROM registered_tenants t " +
+                 "SELECT t.name, t.username, r.apartment_id, r.room_number, a.apartment_name FROM registered_tenants t " +
                  "LEFT JOIN room_occupancy r ON t.tenant_id = r.tenant_id AND r.status = 'Current' " +
                  "LEFT JOIN apartments a ON r.apartment_id = a.apartment_id " +
                  "WHERE t.tenant_id = ?")) {
@@ -52,6 +53,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
             ResultSet rs = ps.executeQuery();
             if(rs.next()){
                 this.tenantName = rs.getString("name");
+                this.currentTenantUsername = rs.getString("username");
                 if (rs.getObject("apartment_id") != null) {
                     this.currentApartmentId = rs.getInt("apartment_id");
                     this.currentRoom = rs.getString("room_number");
@@ -123,6 +125,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
         utilBox.add(createMiniUtility("Electricity", (String)billData[3], (Double)billData[2]));
         utilBox.add(createMiniUtility("Water", (String)billData[5], (Double)billData[4]));
         utilBox.add(createMiniUtility("Internet", (String)billData[7], (Double)billData[6]));
+        utilBox.add(createMiniUtility("Penalty", "Due: " + (String)billData[1], (String)billData[8]));
         leftCol.add(utilBox);
 
         // Right Column (Notifications)
@@ -131,13 +134,13 @@ public class TenantDashboard extends JFrame implements ActionListener {
         rightCol.add(createSubHeader("Notifications"), BorderLayout.NORTH);
         
         JPanel notifBox = createContainerBox();
-        List<String> announcements = dao.getAnnouncements(currentApartmentId);
-        if(announcements.isEmpty()) {
-            notifBox.add(createDarkBox("No new announcements."));
+        List<String> notifications = dao.getNotificationFeed(currentApartmentId, currentTenantUsername);
+        if(notifications.isEmpty()) {
+            notifBox.add(createDarkBox("No new notifications."));
         } else {
             // Show only top 3 on summary screen
-            for(int i=0; i<Math.min(3, announcements.size()); i++) {
-                notifBox.add(createDarkBox(announcements.get(i)));
+            for(int i=0; i<Math.min(3, notifications.size()); i++) {
+                notifBox.add(createDarkBox(notifications.get(i)));
             }
         }
         rightCol.add(notifBox, BorderLayout.CENTER);
@@ -178,6 +181,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
         utilBox.add(createMiniUtility("Electricity", (String)billData[3], (Double)billData[2]));
         utilBox.add(createMiniUtility("Water", (String)billData[5], (Double)billData[4]));
         utilBox.add(createMiniUtility("Internet", (String)billData[7], (Double)billData[6]));
+        utilBox.add(createMiniUtility("Penalty", "Due: " + (String)billData[1], (String)billData[8]));
         pnlUtilWrapper.add(utilBox, BorderLayout.CENTER);
         topRow.add(pnlUtilWrapper);
 
@@ -291,11 +295,11 @@ public class TenantDashboard extends JFrame implements ActionListener {
         JPanel card = createBaseCard("Notification");
         JPanel container = createContainerBox();
         
-        List<String> announcements = dao.getAnnouncements(currentApartmentId);
-        if(announcements.isEmpty()) {
-            container.add(createDarkBox("No new announcements from the owner."));
+        List<String> notifications = dao.getNotificationFeed(currentApartmentId, currentTenantUsername);
+        if(notifications.isEmpty()) {
+            container.add(createDarkBox("No new notifications."));
         } else {
-            for(String ann : announcements) container.add(createDarkBox(ann));
+            for(String ann : notifications) container.add(createDarkBox(ann));
         }
         
         card.add(new JScrollPane(container), BorderLayout.CENTER);
@@ -354,7 +358,7 @@ public class TenantDashboard extends JFrame implements ActionListener {
         JPanel pnlNotifWrap = new JPanel(new BorderLayout()); pnlNotifWrap.setOpaque(false);
         pnlNotifWrap.add(createSubHeader("Notification History"), BorderLayout.NORTH);
         JPanel pnlNotif = createContainerBox();
-        List<String> anns = dao.getAnnouncements(currentApartmentId);
+        List<String> anns = dao.getNotificationFeed(currentApartmentId, currentTenantUsername);
         if(anns.isEmpty()) pnlNotif.add(createDarkBox("No history."));
         for(String a : anns) pnlNotif.add(createDarkBox(a));
         pnlNotifWrap.add(new JScrollPane(pnlNotif), BorderLayout.CENTER);
@@ -482,6 +486,15 @@ public class TenantDashboard extends JFrame implements ActionListener {
         
         String displayAmt = (amt == 0.0 && date.equals("N/A")) ? "₱ 0" : "₱ " + String.format("%,.2f", amt);
         p.add(createLabel(displayAmt, 24, SwingConstants.LEFT, Font.BOLD), BorderLayout.CENTER); 
+        return p;
+    }
+
+    private JPanel createMiniUtility(String name, String date, String amountText) {
+        JPanel p = new JPanel(new BorderLayout());
+        p.setOpaque(false);
+        p.setBorder(new EmptyBorder(5,0,10,0));
+        p.add(createLabel("<html>" + name + "<br>" + date + "</html>", 14, SwingConstants.LEFT, Font.PLAIN), BorderLayout.NORTH);
+        p.add(createLabel(amountText != null ? amountText : "N/A", 24, SwingConstants.LEFT, Font.BOLD), BorderLayout.CENTER);
         return p;
     }
 

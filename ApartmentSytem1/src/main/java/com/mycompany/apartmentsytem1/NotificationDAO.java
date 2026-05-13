@@ -8,80 +8,100 @@ public class NotificationDAO {
 
     // 1. Dispatcher for UPCOMING bills (3 days before due date)
     public void generateUpcomingBillAlerts() {
-        // Looks for bills that are unpaid and exactly 3 days away from today
-        String sql = "SELECT b.total_amount, b.due_date, t.username " +
-                     "FROM bills b " +
-                     "JOIN tenants t ON b.room_number = t.room_number AND b.apartment_id = t.apartment_id " +
-                     "WHERE b.paid = 0 AND b.due_date = date('now', '+3 days')";
+    // Unpaid bills with due_date exactly 3 days from today
+    String sql = "SELECT b.total, b.due_date, t.username " +
+                 "FROM bills b " +
+                 "JOIN registered_tenants t ON b.tenant_id = t.tenant_id " +
+                 "WHERE b.paid = 0 AND b.due_date = date('now', '+3 days')";
 
-        try (Connection conn = DBConnection.connect();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
+    try (Connection conn = DBConnection.connect();
+         PreparedStatement ps = conn.prepareStatement(sql);
+         ResultSet rs = ps.executeQuery()) {
 
-            while (rs.next()) {
-                String username = rs.getString("username");
-                double amount = rs.getDouble("total_amount");
-                String dueDate = rs.getString("due_date");
+        while (rs.next()) {
+            String username = rs.getString("username");
+            double amount   = rs.getDouble("total");
+            String dueDate  = rs.getString("due_date");
 
-                String title = "Upcoming Bill Reminder";
-                String message = "Friendly reminder! Your bill of PHP " + amount + " is due on " + dueDate + ". Please pay on time to avoid penalties.";
-                
-                sendNotification(username, title, message);
-            }
-        } catch (Exception e) {
-            System.err.println("Error generating upcoming alerts: " + e.getMessage());
+            String title   = "Upcoming Bill Reminder";
+            String message = "Friendly reminder! Your bill of PHP " + amount +
+                             " is due on " + dueDate +
+                             ". Please pay on time to avoid penalties.";
+
+            sendNotification(username, title, message);
         }
+    } catch (Exception e) {
+        System.err.println("Error generating upcoming alerts: " + e.getMessage());
     }
+}
+
 
     // 2. Dispatcher for LATE bills (Triggered right after a penalty is applied)
     public void generateLateBillAlerts() {
-        // 1. UPDATED SQL: We added a JOIN to the apartments table so we can fetch 
-        // the 'owner_username' and the 'room_number' to use in the owner's message.
-        String sql = "SELECT b.total_amount, b.due_date, b.penalty, t.username, b.room_number, a.owner_username " +
-                     "FROM bills b " +
-                     "JOIN tenants t ON b.room_number = t.room_number AND b.apartment_id = t.apartment_id " +
-                     "JOIN apartments a ON b.apartment_id = a.apartment_id " +
-                     "WHERE b.paid = 0 AND b.due_date < date('now')";
+    String sql =
+        "SELECT b.penalty, b.due_date, t.username AS tenant_username, " +
+        "       ro.room_number, o.username AS owner_username " +
+        "FROM bills b " +
+        "JOIN registered_tenants t ON b.tenant_id = t.tenant_id " +
+        "LEFT JOIN room_occupancy ro " +
+        "    ON ro.tenant_id = b.tenant_id " +
+        "   AND ro.apartment_id = b.apartment_id " +
+        "   AND ro.status = 'Current' " +
+        "JOIN apartments a ON b.apartment_id = a.apartment_id " +
+        "JOIN owners o ON a.owner_id = o.owner_id " +
+        "WHERE b.paid = 0 AND b.due_date < date('now')";
 
-        try (Connection conn = DBConnection.connect();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
+    try (Connection conn = DBConnection.connect();
+         PreparedStatement ps = conn.prepareStatement(sql);
+         ResultSet rs = ps.executeQuery()) {
 
-            while (rs.next()) {
-                // Fetch data for the Tenant
-                String tenantUsername = rs.getString("username");
-                double penalty = rs.getDouble("penalty");
-                
-                // Fetch data for the Owner
-                String roomNumber = rs.getString("room_number");
-                String ownerUsername = rs.getString("owner_username");
-                
-                // --- ALERTS ---
+        while (rs.next()) {
+            String tenantUsername = rs.getString("tenant_username");
+            double penalty        = rs.getDouble("penalty");
+            String roomNumber     = rs.getString("room_number"); // may be null
+            String ownerUsername  = rs.getString("owner_username");
 
-                // 2. Notify the Tenant (Your original code)
-                String tenantTitle = "Late Payment Alert";
-                String tenantMessage = "Your payment is past due. A penalty of PHP " + penalty + " has been applied to your account. Please settle your balance immediately.";
-                sendNotification(tenantUsername, tenantTitle, tenantMessage);
+            // Tenant alert
+            String tenantTitle   = "Late Payment Alert";
+            String tenantMessage = "Your payment is past due. A penalty of PHP " +
+                                   penalty + " has been applied to your account. " +
+                                   "Please settle your balance immediately.";
+            sendNotification(tenantUsername, tenantTitle, tenantMessage);
 
-                // 3. Notify the Owner (The NEW code)
-                String ownerTitle = "Tenant Delayed Payment";
-                String ownerMessage = "The tenant in Room " + roomNumber + " missed their due date. A penalty of PHP " + penalty + " was applied to their bill.";
-                sendNotification(ownerUsername, ownerTitle, ownerMessage);
-            }
-        } catch (Exception e) {
-            System.err.println("Error generating late alerts: " + e.getMessage());
+            // Owner alert
+            String ownerTitle = "Tenant Delayed Payment";
+            String roomLabel  = (roomNumber != null ? "Room " + roomNumber : "a tenant");
+            String ownerMessage = "The tenant in " + roomLabel +
+                                  " missed their due date. A penalty of PHP " +
+                                  penalty + " was applied to their bill.";
+            sendNotification(ownerUsername, ownerTitle, ownerMessage);
         }
+    } catch (Exception e) {
+        System.err.println("Error generating late alerts: " + e.getMessage());
     }
+}
+
 
     // Helper method to insert the actual message into the database
     private void sendNotification(String username, String title, String message) {
+        String checkSql = "SELECT 1 FROM notifications WHERE target_username = ? AND title = ? AND message = ? LIMIT 1";
         String insertSql = "INSERT INTO notifications (target_username, title, message) VALUES (?, ?, ?)";
         try (Connection conn = DBConnection.connect();
-             PreparedStatement ps = conn.prepareStatement(insertSql)) {
-            ps.setString(1, username);
-            ps.setString(2, title);
-            ps.setString(3, message);
-            ps.executeUpdate();
+             PreparedStatement psCheck = conn.prepareStatement(checkSql)) {
+            psCheck.setString(1, username);
+            psCheck.setString(2, title);
+            psCheck.setString(3, message);
+
+            try (ResultSet rs = psCheck.executeQuery()) {
+                if (rs.next()) return;
+            }
+
+            try (PreparedStatement ps = conn.prepareStatement(insertSql)) {
+                ps.setString(1, username);
+                ps.setString(2, title);
+                ps.setString(3, message);
+                ps.executeUpdate();
+            }
         } catch (Exception e) {
             System.err.println("Error sending notification: " + e.getMessage());
         }
@@ -123,23 +143,28 @@ public class NotificationDAO {
 
     // 4. Notify Owner that their 2% Subscription is Due Soon
     public void generateOwnerSubscriptionAlerts() {
-        // Looks for apartments where the next_billing_date is 3 days away
-        String sql = "SELECT owner_username, next_billing_date FROM apartments WHERE next_billing_date = date('now', '+3 days')";
+    String sql = "SELECT o.username AS owner_username, a.next_billing_date " +
+                 "FROM apartments a " +
+                 "JOIN owners o ON a.owner_id = o.owner_id " +
+                 "WHERE a.next_billing_date = date('now', '+3 days')";
 
-        try (Connection conn = DBConnection.connect();
-             PreparedStatement ps = conn.prepareStatement(sql);
-             ResultSet rs = ps.executeQuery()) {
+    try (Connection conn = DBConnection.connect();
+         PreparedStatement ps = conn.prepareStatement(sql);
+         ResultSet rs = ps.executeQuery()) {
 
-            while (rs.next()) {
-                String ownerUsername = rs.getString("owner_username");
-                String dueDate = rs.getString("next_billing_date");
+        while (rs.next()) {
+            String ownerUsername = rs.getString("owner_username");
+            String dueDate       = rs.getString("next_billing_date");
 
-                String title = "Subscription Due Soon";
-                String message = "Your 2% platform subscription fee is due on " + dueDate + ". Please settle it to maintain system access.";
-                sendNotification(ownerUsername, title, message);
-            }
-        } catch (Exception e) {
-            System.err.println("Error generating owner subscription alerts: " + e.getMessage());
+            String title   = "Subscription Due Soon";
+            String message = "Your 2% platform subscription fee is due on " +
+                             dueDate +
+                             ". Please settle it to maintain system access.";
+            sendNotification(ownerUsername, title, message);
         }
+    } catch (Exception e) {
+        System.err.println("Error generating owner subscription alerts: " + e.getMessage());
     }
+}
+
 }

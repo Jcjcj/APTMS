@@ -20,23 +20,52 @@ public class TenantDashboardDAO {
   /**
      * Loads the specific Rent and Utility bills AND their due dates for the tenant's room.
      * Returns an Object array so it can hold both numbers (amounts) and Strings (dates).
-     * Array Index: [0]RentAmt, [1]RentDate, [2]ElecAmt, [3]ElecDate, [4]WaterAmt, [5]WaterDate, [6]NetAmt, [7]NetDate
+     * Array Index: [0]RentAmt, [1]RentDate, [2]ElecAmt, [3]ElecDate, [4]WaterAmt, [5]WaterDate, [6]NetAmt, [7]NetDate, [8]PenaltyText
      */
     public Object[] getMyBills(int apartmentId, String roomNumber) {
         // METER-AWARE LOGIC: Perfectly mirrors the Owner's side!
+        String latestBillDueDate =
+                     "(SELECT b.due_date " +
+                     " FROM room_occupancy ro2 " +
+                     " JOIN bills b ON b.tenant_id = ro2.tenant_id AND b.apartment_id = ro2.apartment_id " +
+                     " WHERE ro2.apartment_id = r.apartment_id " +
+                     "   AND ro2.room_number = r.room_number " +
+                     "   AND ro2.status = 'Current' " +
+                     "   AND b.paid = 0 " +
+                     " ORDER BY b.bill_id DESC LIMIT 1)";
+
+        String automaticDueDate =
+                     "(SELECT date(ro3.move_in_date, '+1 month') " +
+                     " FROM room_occupancy ro3 " +
+                     " WHERE ro3.apartment_id = r.apartment_id " +
+                     "   AND ro3.room_number = r.room_number " +
+                     "   AND ro3.status = 'Current' " +
+                     " ORDER BY ro3.occupancy_id DESC LIMIT 1)";
+
+        String latestPenalty =
+                     "(SELECT b.penalty " +
+                     " FROM room_occupancy ro4 " +
+                     " JOIN bills b ON b.tenant_id = ro4.tenant_id AND b.apartment_id = ro4.apartment_id " +
+                     " WHERE ro4.apartment_id = r.apartment_id " +
+                     "   AND ro4.room_number = r.room_number " +
+                     "   AND ro4.status = 'Current' " +
+                     "   AND b.paid = 0 " +
+                     " ORDER BY b.bill_id DESC LIMIT 1)";
+
         String sql = "SELECT " +
                      "COALESCE(rb.rent_amount, r.rent_amount) as rent_amt, " +
-                     "COALESCE(rb.rent_due_date, 'N/A') as rent_date, " +
+                     "COALESCE(" + latestBillDueDate + ", rb.rent_due_date, " + automaticDueDate + ", 'N/A') as rent_date, " +
                      // Electricity Logic: Fixed = Base Rate, Metered = 0.0 until Owner updates
                      "CASE WHEN rb.electricity_amount IS NOT NULL THEN rb.electricity_amount " +
                      "     WHEN a.electricity_type = 'Fixed' THEN a.elec_rate ELSE 0.0 END as elec_amt, " +
-                     "COALESCE(rb.electricity_due_date, 'N/A') as elec_date, " +
+                     "COALESCE(" + latestBillDueDate + ", rb.electricity_due_date, " + automaticDueDate + ", 'N/A') as elec_date, " +
                      // Water Logic: Fixed = Base Rate, Metered = 0.0 until Owner updates
                      "CASE WHEN rb.water_amount IS NOT NULL THEN rb.water_amount " +
                      "     WHEN a.water_type = 'Fixed' THEN a.water_rate ELSE 0.0 END as water_amt, " +
-                     "COALESCE(rb.water_due_date, 'N/A') as water_date, " +
+                     "COALESCE(" + latestBillDueDate + ", rb.water_due_date, " + automaticDueDate + ", 'N/A') as water_date, " +
                      "COALESCE(rb.internet_amount, a.internet_rate, 0.0) as net_amt, " +
-                     "COALESCE(rb.internet_due_date, 'N/A') as net_date " +
+                     "COALESCE(" + latestBillDueDate + ", rb.internet_due_date, " + automaticDueDate + ", 'N/A') as net_date, " +
+                     "COALESCE(" + latestPenalty + ", 0.0) as penalty_amt " +
                      "FROM rooms r " +
                      "JOIN apartments a ON r.apartment_id = a.apartment_id " +
                      "LEFT JOIN room_bills rb ON r.room_number = rb.room_number AND r.apartment_id = rb.apartment_id " +
@@ -53,13 +82,14 @@ public class TenantDashboardDAO {
                     rs.getDouble("rent_amt"), rs.getString("rent_date"),
                     rs.getDouble("elec_amt"), rs.getString("elec_date"),
                     rs.getDouble("water_amt"), rs.getString("water_date"),
-                    rs.getDouble("net_amt"), rs.getString("net_date")
+                    rs.getDouble("net_amt"), rs.getString("net_date"),
+                    rs.getDouble("penalty_amt") > 0.0 ? String.format("PHP %,.2f", rs.getDouble("penalty_amt")) : "N/A"
                 };
             }
         } catch (Exception e) {
             LOGGER.severe("Meter-Aware Get Bills Error: " + e.getMessage());
         }
-        return new Object[] {0.0, "N/A", 0.0, "N/A", 0.0, "N/A", 0.0, "N/A"};
+        return new Object[] {0.0, "N/A", 0.0, "N/A", 0.0, "N/A", 0.0, "N/A", "N/A"};
     }
     /**
      * Submits the GCash/Paymaya transaction reference to the owner.
@@ -92,7 +122,8 @@ public class TenantDashboardDAO {
      * Submits a new maintenance request (e.g., "Broken Doorknob").
      */
     public boolean submitMaintenanceRequest(int apartmentId, String roomNumber, String issue) {
-        String sql = "INSERT INTO maintenance_requests(apartment_id, room_number, issue, status) VALUES(?,?,?,'PENDING')";
+        // FIXED: Changed 'issue' to 'issue_description' to match your database
+        String sql = "INSERT INTO maintenance_requests(apartment_id, room_number, issue_description, status, date_reported, date_updated) VALUES(?,?,?,'PENDING',date('now'),date('now'))";
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, apartmentId);
@@ -109,14 +140,15 @@ public class TenantDashboardDAO {
      */
     public List<String> getMyMaintenanceRequests(int apartmentId, String roomNumber) {
         List<String> list = new ArrayList<>();
-        String sql = "SELECT issue FROM maintenance_requests WHERE apartment_id = ? AND room_number = ? ORDER BY request_id DESC";
+        String sql = "SELECT issue_description, status, COALESCE(date_reported, date_updated, 'N/A') AS request_date " +
+                     "FROM maintenance_requests WHERE apartment_id = ? AND room_number = ? ORDER BY request_id DESC";
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, apartmentId);
             ps.setString(2, roomNumber);
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
-                list.add(rs.getString("issue"));
+                list.add("[" + rs.getString("status") + "] " + rs.getString("request_date") + "\n" + rs.getString("issue_description"));
             }
         } catch (Exception e) {
             LOGGER.severe("Get Maintenance Error: " + e.getMessage());
@@ -152,18 +184,26 @@ public class TenantDashboardDAO {
     /**
      * Gets broadcasts/announcements sent by the Owner (e.g., "Power Outage").
      */
-    public List<String> getAnnouncements(int apartmentId) {
+    public List<String> getNotificationFeed(int apartmentId, String tenantUsername) {
         List<String> list = new ArrayList<>();
-        String sql = "SELECT title, message, date_posted FROM announcements WHERE apartment_id = ? ORDER BY announcement_id DESC";
+        String sql =
+                "SELECT title, message, created_at FROM (" +
+                "  SELECT title, message, date_posted AS created_at, announcement_id AS sort_id " +
+                "  FROM announcements WHERE apartment_id = ? " +
+                "  UNION ALL " +
+                "  SELECT title, message, date_created AS created_at, notification_id AS sort_id " +
+                "  FROM notifications WHERE target_username = ? " +
+                ") ORDER BY created_at DESC, sort_id DESC";
         try (Connection conn = DBConnection.connect();
              PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setInt(1, apartmentId);
+            ps.setString(2, tenantUsername);
             ResultSet rs = ps.executeQuery();
             while (rs.next()) {
-                list.add(rs.getString("title") + "\n" + rs.getString("message") + " (" + rs.getString("date_posted") + ")");
+                list.add(rs.getString("title") + "\n" + rs.getString("message") + " (" + rs.getString("created_at") + ")");
             }
         } catch (Exception e) {
-            LOGGER.severe("Get Announcements Error: " + e.getMessage());
+            LOGGER.severe("Get Notification Feed Error: " + e.getMessage());
         }
         return list;
     }

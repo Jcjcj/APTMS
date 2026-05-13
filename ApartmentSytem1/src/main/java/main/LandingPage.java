@@ -321,20 +321,26 @@ public class LandingPage extends JFrame {
                     new Dashboard.TenantDashboard(tenantId).setVisible(true); 
                 }
                 return;
-            } else if (!"Username not found.".equals(tenantStatus) && !"Invalid password.".equals(tenantStatus)) {
-                JOptionPane.showMessageDialog(this, tenantStatus, "Registration Status", JOptionPane.INFORMATION_MESSAGE);
+            } else if (tenantStatus.startsWith("Your registration is ")) {
+                this.dispose();
+                new StatusDashboard(getTenantStatusDashboardData(user), user).setVisible(true);
                 return;
             }
 
             // =========================================================
-            // CHECK 4: ROOM VIEWING TEMPORARY ACCOUNT
+            // CHECK 4: ROOM VIEWING / RESERVATION STATUS ACCOUNT
             // =========================================================
             com.mycompany.apartmentsytem1.ViewingDAO viewingDAO = new com.mycompany.apartmentsytem1.ViewingDAO();
             String[] viewingData = viewingDAO.getTemporaryUserDashboard(user, pass);
             
             if (viewingData != null) {
                 this.dispose();
-                new StatusDashboard(viewingData).setVisible(true); // Routes to the dynamic Status Dashboard!
+                new StatusDashboard(viewingData, user).setVisible(true); // Routes to the dynamic Status Dashboard!
+                return;
+            }
+
+            if (!"Username not found.".equals(tenantStatus) && !"Invalid password.".equals(tenantStatus)) {
+                JOptionPane.showMessageDialog(this, tenantStatus, "Registration Status", JOptionPane.INFORMATION_MESSAGE);
                 return;
             }
 
@@ -351,6 +357,106 @@ public class LandingPage extends JFrame {
         add(rightPanel);
         this.setResizable(false);
     }
+
+    private String[] getTenantStatusDashboardData(String username) {
+        String[] dashboardData = {
+            "N/A",
+            "Apartment",
+            "Location Pending",
+            "Direct Registration",
+            "N/A",
+            "PENDING",
+            username,
+            "",
+            username,
+            ""
+        };
+
+        String tenantName = username;
+        int apartmentId = 0;
+
+        String tenantSql = "SELECT t.name, t.contact_number, t.email, t.target_room_number, t.target_apartment_id, " +
+                           "t.approval_status, a.apartment_name, a.street, a.barangay " +
+                           "FROM registered_tenants t " +
+                           "LEFT JOIN apartments a ON t.target_apartment_id = a.apartment_id " +
+                           "WHERE t.username = ?";
+
+        try (java.sql.Connection conn = com.mycompany.apartmentsytem1.DBConnection.connect();
+             java.sql.PreparedStatement ps = conn.prepareStatement(tenantSql)) {
+            ps.setString(1, username);
+
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    tenantName = safeValue(rs.getString("name"), username);
+                    apartmentId = rs.getInt("target_apartment_id");
+
+                    dashboardData[0] = normalizeRoomNumber(rs.getString("target_room_number"));
+                    dashboardData[1] = safeValue(rs.getString("apartment_name"), "Apartment");
+                    dashboardData[2] = formatAddress(rs.getString("street"), rs.getString("barangay"));
+                    dashboardData[5] = safeValue(rs.getString("approval_status"), "PENDING");
+                    dashboardData[6] = tenantName;
+                    dashboardData[7] = safeValue(rs.getString("contact_number"), "");
+                    dashboardData[9] = safeValue(rs.getString("email"), "");
+                }
+            }
+
+            if (apartmentId != 0) {
+                fillLatestViewingData(conn, dashboardData, apartmentId, tenantName);
+            }
+        } catch (Exception ex) {
+            System.out.println("LandingPage tenant status lookup error: " + ex.getMessage());
+        }
+
+        return dashboardData;
+    }
+
+    private void fillLatestViewingData(java.sql.Connection conn, String[] dashboardData, int apartmentId, String tenantName)
+            throws java.sql.SQLException {
+        String viewingSql = "SELECT schedule_date, viewing_time, status FROM viewing_schedule " +
+                            "WHERE apartment_id = ? AND tenant_name = ? " +
+                            "ORDER BY schedule_id DESC LIMIT 1";
+
+        try (java.sql.PreparedStatement ps = conn.prepareStatement(viewingSql)) {
+            ps.setInt(1, apartmentId);
+            ps.setString(2, tenantName);
+
+            try (java.sql.ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    dashboardData[3] = safeValue(rs.getString("schedule_date"), dashboardData[3]);
+                    dashboardData[4] = safeValue(rs.getString("viewing_time"), dashboardData[4]);
+                    dashboardData[5] = safeValue(rs.getString("status"), dashboardData[5]);
+                }
+            }
+        }
+    }
+
+    private String formatAddress(String street, String barangay) {
+        String safeStreet = safeValue(street, "");
+        String safeBarangay = safeValue(barangay, "");
+
+        if (!safeStreet.isEmpty() && !safeBarangay.isEmpty()) {
+            return safeStreet + ", " + safeBarangay;
+        }
+        if (!safeStreet.isEmpty()) {
+            return safeStreet;
+        }
+        if (!safeBarangay.isEmpty()) {
+            return safeBarangay;
+        }
+        return "Location Pending";
+    }
+
+    private String normalizeRoomNumber(String roomNumber) {
+        String safeRoom = safeValue(roomNumber, "N/A");
+        if (safeRoom.toLowerCase().startsWith("room ")) {
+            return safeRoom.substring(5).trim();
+        }
+        return safeRoom;
+    }
+
+    private String safeValue(String value, String fallback) {
+        return value != null && !value.isBlank() ? value : fallback;
+    }
     
     private static final String[] barangayList = {
         "Adlaon", "Agsungot", "Apas", "Bacayan", "Babag", "Banilad", "Basak Pardo", "Basak San Nicolas",
@@ -366,6 +472,7 @@ public class LandingPage extends JFrame {
     };
 
     public static void main(String[] args) {
+        com.mycompany.apartmentsytem1.DatabaseSetup.createTables();
         SwingUtilities.invokeLater(() -> new LandingPage().setVisible(true));
     }
 }

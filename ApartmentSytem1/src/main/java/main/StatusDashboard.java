@@ -6,10 +6,11 @@ import java.awt.*;
 
 public class StatusDashboard extends JFrame {
 
-    // Expects an array: [0]room_number, [1]apartment_name, [2]apartment_address, 
-    // [3]schedule_date, [4]viewing_time, [5]status, [6]tenant_name
-    public StatusDashboard(String[] viewingData) {
-        setTitle("Room Viewing Status");
+    // Expects an array: [0]room_number, [1]apartment_name, [2]apartment_address,
+    // [3]schedule_date, [4]viewing_time, [5]status, [6]tenant_name, [7]contact, [8]username
+    public StatusDashboard(String[] viewingData, String username){
+        boolean isReservation = viewingData.length > 4 && "RESERVE_NOW".equalsIgnoreCase(viewingData[4]);
+        setTitle(isReservation ? "Reservation Status" : "Room Viewing Status");
         setExtendedState(JFrame.MAXIMIZED_BOTH);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE); 
         setLayout(new BorderLayout());
@@ -20,7 +21,7 @@ public class StatusDashboard extends JFrame {
         headerPanel.setBackground(new Color(0, 102, 51));
         headerPanel.setBorder(new EmptyBorder(15, 20, 15, 20));
         
-        JLabel titleLabel = new JLabel("Room Viewing");
+        JLabel titleLabel = new JLabel(isReservation ? "Room Reservation" : "Room Viewing");
         titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 36));
         titleLabel.setForeground(Color.WHITE);
         headerPanel.add(titleLabel, BorderLayout.WEST);
@@ -57,11 +58,11 @@ public class StatusDashboard extends JFrame {
         aptLbl.setForeground(Color.WHITE);
 
         // Dynamically set Date and Time
-        JLabel dateLbl = new JLabel(viewingData[3]);
+        JLabel dateLbl = new JLabel(isReservation ? "Reservation Request" : viewingData[3]);
         dateLbl.setFont(new Font("Segoe UI", Font.PLAIN, 24));
         dateLbl.setForeground(Color.WHITE);
 
-        JLabel timeLbl = new JLabel(viewingData[4]);
+        JLabel timeLbl = new JLabel(isReservation ? "Pending owner approval" : viewingData[4]);
         timeLbl.setFont(new Font("Segoe UI", Font.PLAIN, 24));
         timeLbl.setForeground(Color.WHITE);
 
@@ -98,6 +99,30 @@ public class StatusDashboard extends JFrame {
         statusCard.add(infoPanel, BorderLayout.WEST);
         statusCard.add(badgeWrapper, BorderLayout.EAST);
 
+        JButton btnRegister = new JButton("CONTINUE REGISTRATION");
+        btnRegister.setBackground(new Color(0, 204, 102));
+        btnRegister.setForeground(Color.WHITE);
+        btnRegister.setFocusPainted(false);
+        btnRegister.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        btnRegister.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        btnRegister.setVisible("APPROVED".equalsIgnoreCase(currentStatus));
+        btnRegister.addActionListener(e -> {
+            this.dispose();
+            String prefillName = viewingData.length > 6 ? viewingData[6] : "";
+            String prefillContact = viewingData.length > 7 ? viewingData[7] : "";
+            String currentUsername = viewingData.length > 8 ? viewingData[8] : "";
+            String prefillEmail = viewingData.length > 9 ? viewingData[9] : "";
+            new SignUp(
+                    "TENANT_PREFILL",
+                    prefillName,
+                    prefillContact,
+                    prefillEmail,
+                    currentUsername,
+                    viewingData[1],
+                    viewingData[0]
+            ).setVisible(true);
+        });
+
         // Logout Button to go back to landing page
         JButton btnBack = new JButton("LOG OUT");
         btnBack.setBackground(new Color(180, 50, 50));
@@ -112,6 +137,7 @@ public class StatusDashboard extends JFrame {
 
         JPanel bottomWrapper = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         bottomWrapper.setOpaque(false);
+        bottomWrapper.add(btnRegister);
         bottomWrapper.add(btnBack);
         statusCard.add(bottomWrapper, BorderLayout.SOUTH);
 

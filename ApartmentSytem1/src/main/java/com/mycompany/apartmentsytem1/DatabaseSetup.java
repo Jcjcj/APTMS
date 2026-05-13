@@ -17,7 +17,7 @@ public class DatabaseSetup {
                     + "password TEXT)");
             stmt.execute("INSERT OR IGNORE INTO super_admins (username, password) VALUES ('superadmin', '" + PasswordUtil.hashPassword("admin123") + "')");
 
-            // OWNERS TABLE
+            // OWNERS TABLE (FIXED: Added missing GCash and Paymaya columns)
             stmt.execute("CREATE TABLE IF NOT EXISTS owners ("
                     + "owner_id INTEGER PRIMARY KEY AUTOINCREMENT,"
                     + "name TEXT,"
@@ -26,6 +26,10 @@ public class DatabaseSetup {
                     + "address TEXT,"
                     + "emergency_number TEXT,"
                     + "valid_id TEXT,"
+                    + "gcash_no TEXT,"
+                    + "gcash_name TEXT,"
+                    + "paymaya_no TEXT,"
+                    + "paymaya_name TEXT,"
                     + "username TEXT UNIQUE,"
                     + "password TEXT,"
                     + "is_active INTEGER DEFAULT 1)");
@@ -140,7 +144,13 @@ public class DatabaseSetup {
                     + "rejection_reason TEXT," 
                     + "temp_username TEXT,"
                     + "temp_password TEXT,"
+                    + "temp_email TEXT,"
+                    + "payment_reference TEXT,"
+                    + "down_payment_amount REAL DEFAULT 0.0,"
                     + "FOREIGN KEY(apartment_id) REFERENCES apartments(apartment_id) ON DELETE CASCADE)");
+            addColumnIfMissing(stmt, "viewing_schedule", "temp_email", "TEXT");
+            addColumnIfMissing(stmt, "viewing_schedule", "payment_reference", "TEXT");
+            addColumnIfMissing(stmt, "viewing_schedule", "down_payment_amount", "REAL DEFAULT 0.0");
 
             // BARANGAYS TABLE
             stmt.execute("CREATE TABLE IF NOT EXISTS barangays ("
@@ -305,6 +315,14 @@ public class DatabaseSetup {
 
         } catch (Exception e) {
             System.out.println("DB Setup Error: " + e.getMessage());
+        }
+    }
+
+    private static void addColumnIfMissing(Statement stmt, String tableName, String columnName, String definition) {
+        try {
+            stmt.execute("ALTER TABLE " + tableName + " ADD COLUMN " + columnName + " " + definition);
+        } catch (Exception ignored) {
+            // SQLite reports an error when the column already exists.
         }
     }
 }

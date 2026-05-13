@@ -82,8 +82,8 @@ public class ApartmentSytem1 {
         System.out.println("[PHASE 5: AUTOMATED PENALTIES TRIGGERED]");
         System.out.println("-----------------------------------------------------");
         
-        String simulatedPenaltyDate = "2026-07-01"; // Explicitly defined to avoid null
-        billingDAO.applyLatePenalties(simulatedPenaltyDate); 
+        PenaltyManager penaltyManager = new PenaltyManager(billingDAO);
+        penaltyManager.applyPenaltiesForOverdueBills();
         
         double remainingDebt = billingDAO.getOutstandingBalance(2);
         

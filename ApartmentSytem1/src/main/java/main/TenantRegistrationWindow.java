@@ -93,7 +93,6 @@ public class TenantRegistrationWindow extends JFrame {
         splitRow.setOpaque(false);
         JPanel datePanel = new JPanel(); datePanel.setLayout(new BoxLayout(datePanel, BoxLayout.Y_AXIS)); datePanel.setOpaque(false);
         JTextField txtMoveIn = createFieldRow(datePanel, "Move-in Date");
-        txtMoveIn.setEditable(false);
         
         JPanel occPanel = new JPanel(); occPanel.setLayout(new BoxLayout(occPanel, BoxLayout.Y_AXIS)); occPanel.setOpaque(false);
         JTextField txtOccupants = createFieldRow(occPanel, "Number of Occupants");
@@ -138,8 +137,9 @@ public class TenantRegistrationWindow extends JFrame {
             String emergency = txtEmergency.getText().trim();
             String occupants = txtOccupants.getText().trim();
             String pass = new String(txtPass.getPassword());
+            String moveIn = txtMoveIn.getText().trim(); // Fetch the new date
 
-            if (address.isEmpty() || contact.isEmpty() || email.isEmpty() || emergency.isEmpty() || occupants.isEmpty() || pass.isEmpty()) {
+            if (address.isEmpty() || contact.isEmpty() || email.isEmpty() || emergency.isEmpty() || occupants.isEmpty() || pass.isEmpty() || moveIn.isEmpty()) {
                 JOptionPane.showMessageDialog(this, "Please fill in all empty fields to complete your registration.");
                 return;
             }
@@ -148,9 +148,8 @@ public class TenantRegistrationWindow extends JFrame {
                 return;
             }
 
-            saveTenantProfile(address, contact, email, emergency, occupants, pass);
+            saveTenantProfile(address, contact, email, emergency, occupants, pass, moveIn);
         });
-
         bottomPanel.add(btnSignUp);
         mainPanel.add(bottomPanel, BorderLayout.SOUTH);
 
@@ -201,9 +200,10 @@ public class TenantRegistrationWindow extends JFrame {
         } catch (Exception e) { e.printStackTrace(); }
     }
 
-    private void saveTenantProfile(String address, String contact, String email, String emergency, String occupants, String pass) {
+    private void saveTenantProfile(String address, String contact, String email, String emergency, String occupants, String pass, String moveIn) {
         String hashedPass = PasswordUtil.hashPassword(pass);
-        String sql = "UPDATE registered_tenants SET address = ?, contact_number = ?, email = ?, emergency_contact = ?, occupants = ?, password = ? WHERE tenant_id = ?";
+        // Added move_in_date to the SQL UPDATE statement
+        String sql = "UPDATE registered_tenants SET address = ?, contact_number = ?, email = ?, emergency_contact = ?, occupants = ?, password = ?, move_in_date = ? WHERE tenant_id = ?";
         
         try (Connection conn = DBConnection.connect(); PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, address);
@@ -212,13 +212,11 @@ public class TenantRegistrationWindow extends JFrame {
             ps.setString(4, emergency);
             ps.setInt(5, Integer.parseInt(occupants));
             ps.setString(6, hashedPass);
-            ps.setInt(7, tenantId);
+            ps.setString(7, moveIn); // Save the date
+            ps.setInt(8, tenantId);
             
             if (ps.executeUpdate() > 0) {
-                // --- NEW: CLEANUP LOGIC ---
-                // We fetch the name and aptId to find the temp record
                 com.mycompany.apartmentsytem1.ViewingDAO vDao = new com.mycompany.apartmentsytem1.ViewingDAO(); 
-                // 'txtName' and 'apt' are available in your window's scope
                 vDao.cleanupTemporaryAccount(currentAptId, txtName.getText());
 
                 JOptionPane.showMessageDialog(this, "Profile Completed! Welcome to your dashboard.");
@@ -228,5 +226,22 @@ public class TenantRegistrationWindow extends JFrame {
         } catch (Exception e) {
             JOptionPane.showMessageDialog(this, "Error: " + e.getMessage());
         }
+    }
+    
+    // ======================================================================================
+    // MAIN METHOD FOR INDEPENDENT TESTING
+    // ======================================================================================
+    public static void main(String[] args) {
+        try {
+            // Sets the UI to look like a modern Windows/Mac app instead of the old Java default
+            UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        SwingUtilities.invokeLater(() -> {
+            // We pass '1' as a dummy tenantId to force the window to open
+            new TenantRegistrationWindow(1).setVisible(true);
+        });
     }
 }

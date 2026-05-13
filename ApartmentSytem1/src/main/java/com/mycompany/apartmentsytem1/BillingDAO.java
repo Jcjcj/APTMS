@@ -52,11 +52,9 @@ public class BillingDAO {
                     int roomId = rs.getInt("room_id");
                     
                     LocalDate moveInDate = LocalDate.parse(rs.getString("move_in_date"));
-                    long daysSinceMoveIn = ChronoUnit.DAYS.between(moveInDate, LocalDate.now());
-                    if (daysSinceMoveIn < 0) daysSinceMoveIn = 0; 
-                    
-                    long cycles = daysSinceMoveIn / 30; 
-                    LocalDate calculatedDueDate = moveInDate.plusDays((cycles + 1) * 30);
+                    LocalDate today = LocalDate.now();
+                    long cycles = today.isBefore(moveInDate) ? 0 : ChronoUnit.MONTHS.between(moveInDate, today);
+                    LocalDate calculatedDueDate = moveInDate.plusMonths(cycles + 1);
                     String finalDueDate = calculatedDueDate.toString();
                     
                     String dbElecType = rs.getString("electricity_type");
@@ -202,32 +200,47 @@ public class BillingDAO {
 
     // 3. Add this helper method directly below payBill
     private void triggerPaymentNotification(int billId, double amountPaid) {
-        // Look up the missing details (tenant name, room, owner) using the billId
-        String sql = "SELECT t.username, t.room_number, a.owner_username " +
-                     "FROM bills b " +
-                     "JOIN tenants t ON b.room_number = t.room_number AND b.apartment_id = t.apartment_id " +
-                     "JOIN apartments a ON b.apartment_id = a.apartment_id " +
-                     "WHERE b.bill_id = ?";
+    String sql = "SELECT t.username AS tenant_username, " +
+                 "       ro.room_number, " +
+                 "       o.username AS owner_username " +
+                 "FROM bills b " +
+                 "JOIN registered_tenants t ON b.tenant_id = t.tenant_id " +
+                 "LEFT JOIN room_occupancy ro " +
+                 "   ON ro.tenant_id = b.tenant_id " +
+                 "  AND ro.apartment_id = b.apartment_id " +
+                 "  AND ro.status = 'Current' " +
+                 "JOIN apartments a ON b.apartment_id = a.apartment_id " +
+                 "JOIN owners o ON a.owner_id = o.owner_id " +
+                 "WHERE b.bill_id = ?";
 
-        try (Connection conn = DBConnection.connect();
-             PreparedStatement ps = conn.prepareStatement(sql)) {
-             
-            ps.setInt(1, billId);
-            ResultSet rs = ps.executeQuery();
-            
-            if (rs.next()) {
-                String tenantName = rs.getString("username");
-                String roomNumber = rs.getString("room_number");
-                String ownerUsername = rs.getString("owner_username");
-                
-                // Send the alert to the owner!
-                NotificationDAO notificationEngine = new NotificationDAO();
-                notificationEngine.notifyOwnerTenantPaid(ownerUsername, tenantName, roomNumber, amountPaid);
-            }
-        } catch (Exception e) {
-            System.out.println("Notification Error: " + e.getMessage());
+    try (Connection conn = DBConnection.connect();
+         PreparedStatement ps = conn.prepareStatement(sql)) {
+
+        ps.setInt(1, billId);
+        ResultSet rs = ps.executeQuery();
+
+        if (rs.next()) {
+            String tenantUsername = rs.getString("tenant_username");
+            String roomNumber     = rs.getString("room_number"); // may be null
+            String ownerUsername  = rs.getString("owner_username");
+
+            // fire existing NotificationDAO logic
+            NotificationDAO notificationEngine = new NotificationDAO();
+
+            // Owner alert
+            String roomLabel = (roomNumber != null ? "Room " + roomNumber : "their assigned room");
+            notificationEngine.notifyOwnerTenantPaid(
+                    ownerUsername,
+                    tenantUsername,
+                    roomLabel,
+                    amountPaid
+            );
         }
+    } catch (Exception e) {
+        System.out.println("Notification Error: " + e.getMessage());
     }
+}
+
     // =========================================================
     // NEW IMPROVEMENT 1: ARREARS TRACKER (No Conflicts)
     // =========================================================
@@ -254,48 +267,4 @@ public class BillingDAO {
     // =========================================================
     // NEW IMPROVEMENT 2: AUTOMATED PENALTIES (No Conflicts)
     // =========================================================
-    public void applyLatePenalties(String currentDate) {
-        // Enforces your rule: penalty rate depends on the owner of the registered apartment.
-        // It strictly updates the existing penalty columns in your bills table.
-        String findOverdueSql = 
-            "SELECT b.bill_id, b.total, a.penalty_rate " +
-            "FROM bills b " +
-            "JOIN apartments a ON b.apartment_id = a.apartment_id " +
-            "WHERE b.paid = 0 AND b.due_date < ? AND b.penalty = 0";
-
-        String updatePenaltySql = 
-            "UPDATE bills SET penalty = ?, total = total + ?, penalty_applied_at = ? WHERE bill_id = ?";
-
-        try (Connection conn = DBConnection.connect();
-             PreparedStatement findPs = conn.prepareStatement(findOverdueSql);
-             PreparedStatement updatePs = conn.prepareStatement(updatePenaltySql)) {
-            
-            findPs.setString(1, currentDate);
-            ResultSet rs = findPs.executeQuery();
-
-            int updatedCount = 0;
-            while (rs.next()) {
-                int billId = rs.getInt("bill_id");
-                double currentTotal = rs.getDouble("total");
-                double penaltyRate = rs.getDouble("penalty_rate"); 
-                
-                double penaltyAmount = currentTotal * penaltyRate;
-
-                updatePs.setDouble(1, penaltyAmount);
-                updatePs.setDouble(2, penaltyAmount);
-                updatePs.setString(3, currentDate);
-                updatePs.setInt(4, billId);
-                updatePs.addBatch();
-                updatedCount++;
-            }
-            
-            if (updatedCount > 0) {
-                updatePs.executeBatch();
-                System.out.println("System Check: Applied owner-specific penalties to " + updatedCount + " overdue bills.");
-            }
-
-        } catch (Exception e) {
-            System.out.println("Penalty Automation Error: " + e.getMessage());
-        }
-    }
 }
